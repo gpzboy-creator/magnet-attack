@@ -1444,7 +1444,7 @@ export function downloadSingleFramePNG(
 }
 
 export const DEFAULT_UPLOADED_SPRITE_SHEET_URL =
-  '/assets/aistudio/Gemini_Generated_Image_vtvrxkvtvrxkvtvr_9de06393.jpg';
+  `${import.meta.env.BASE_URL}assets/aistudio/Gemini_Generated_Image_vtvrxkvtvrxkvtvr_9de06393.jpg`;
 
 /**
  * Normalizes a loaded 4x8 sprite sheet image onto a clean 512x1024 canvas

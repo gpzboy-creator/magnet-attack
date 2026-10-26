@@ -95,7 +95,7 @@ export const MagnetBoardModal: React.FC<MagnetBoardModalProps> = ({
           <div className="relative w-48 sm:w-64 shrink-0 flex flex-col items-center">
             <div className="relative rounded-lg overflow-hidden shadow-2xl border border-stone-700/60 bg-white">
               <img
-                src="/assets/aistudio/___-__-_______f37299ea.jpg"
+                src={`${import.meta.env.BASE_URL}assets/aistudio/___-__-_______f37299ea.jpg`}
                 alt="לוח מגנטים חצובה"
                 className="w-full h-auto object-contain max-h-72"
               />

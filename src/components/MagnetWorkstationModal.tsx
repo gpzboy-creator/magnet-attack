@@ -584,7 +584,7 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
                   />
                   {/* Mini Reference Photo Badge in top-left corner */}
                   <img
-                    src="/assets/aistudio/images_2d9246ef.jpg"
+                    src={`${import.meta.env.BASE_URL}assets/aistudio/images_2d9246ef.jpg`}
                     alt="מדפסת תרמית מקורית"
                     className="absolute top-1.5 left-1.5 w-10 h-10 object-contain bg-white rounded border border-stone-600 p-0.5 shadow"
                   />
@@ -663,7 +663,7 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
                   />
                   {/* Mini Reference Photo Badge in top-left corner */}
                   <img
-                    src="/assets/aistudio/3507_100620211652394_138ea7bb.jpg"
+                    src={`${import.meta.env.BASE_URL}assets/aistudio/3507_100620211652394_138ea7bb.jpg`}
                     alt="חותך גליוטינה מקורי"
                     className="absolute top-1.5 left-1.5 w-10 h-10 object-contain bg-white rounded border border-stone-600 p-0.5 shadow"
                   />
