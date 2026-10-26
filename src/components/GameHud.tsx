@@ -27,10 +27,22 @@ export interface HudSnapshot {
   trackTimeSec?: number;
   stageTitleHe?: string;
   photosInCamera?: number;
+  /** Photos copied to the laptop, ready to print */
+  photosOnComputer?: number;
+  /** Photos currently being copied from the camera card */
+  photosTransferring?: number;
+  transferRemainingSec?: number;
+  /** Camera is lying on the workstation desk (card in the laptop) → can't shoot */
+  cameraOnDesk?: boolean;
   maxPhotosInCamera?: number;
   uncutSheetsAtStation?: number;
   cutMagnetsInHand?: number;
-  activeWorkflowObjective?: 'dancefloor' | 'workstation_develop' | 'workstation_cut' | 'board_stick';
+  activeWorkflowObjective?:
+    | 'dancefloor'
+    | 'workstation_transfer'
+    | 'workstation_develop'
+    | 'workstation_cut'
+    | 'board_stick';
   isAtMagnetStation?: boolean;
   isSeatedAtStation?: boolean;
   stationFeedbackText?: string | null;
@@ -100,6 +112,10 @@ export const GameHud: React.FC<GameHudProps> = ({
   const photosInCamera = hud.photosInCamera ?? 0;
   const maxPhotosInCamera = hud.maxPhotosInCamera ?? 12;
   const uncutSheetsAtStation = hud.uncutSheetsAtStation ?? 0;
+  const photosOnComputer = hud.photosOnComputer ?? 0;
+  const photosTransferring = hud.photosTransferring ?? 0;
+  const transferRemainingSec = hud.transferRemainingSec ?? 0;
+  const cameraOnDesk = hud.cameraOnDesk ?? false;
   const cutMagnetsInHand = hud.cutMagnetsInHand ?? 0;
   const isNearStation = hud.isAtMagnetStation ?? false;
   const availableOnBoard = hud.availableMagnetsOnBoard ?? 0;
@@ -350,11 +366,35 @@ export const GameHud: React.FC<GameHudProps> = ({
                   ? 'bg-amber-500/25 text-amber-300 border border-amber-400/60'
                   : 'text-stone-400'
               }`}
-              title="שלב 1: תמונות בכרטיס הזיכרון במצלמה"
+              title={
+                cameraOnDesk
+                  ? 'המצלמה על שולחן העבודה — אי אפשר לצלם'
+                  : 'שלב 1: תמונות בכרטיס הזיכרון במצלמה'
+              }
             >
-              <span>📸</span>
+              <span className={cameraOnDesk ? 'opacity-40' : undefined}>📸</span>
               <span data-testid="hud-photos-in-camera">
-                {photosInCamera}/{maxPhotosInCamera}
+                {cameraOnDesk ? '—' : `${photosInCamera}/${maxPhotosInCamera}`}
+              </span>
+            </span>
+
+            <span className="text-stone-500 text-[10px]">›</span>
+
+            <span
+              className={`px-1 py-0.2 rounded flex items-center gap-0.5 ${
+                photosTransferring > 0
+                  ? 'bg-lime-500/25 text-lime-200 border border-lime-400/60 animate-pulse'
+                  : photosOnComputer > 0
+                  ? 'bg-lime-500/25 text-lime-300 border border-lime-400/60'
+                  : 'text-stone-500'
+              }`}
+              title="שלב 2: תמונות שהועברו מהמצלמה למחשב ומוכנות להדפסה"
+            >
+              <span>💻</span>
+              <span data-testid="hud-photos-on-computer">
+                {photosTransferring > 0
+                  ? `${transferRemainingSec.toFixed(1)}s`
+                  : photosOnComputer}
               </span>
             </span>
 
@@ -366,7 +406,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400/60 animate-pulse'
                   : 'text-stone-500'
               }`}
-              title="שלב 2: דפי מגנט מודפסים הממתינים לחיתוך בעמדה"
+              title="שלב 3: דפי מגנט מודפסים הממתינים לחיתוך בעמדה"
             >
               <span>✂️</span>
               <span data-testid="hud-uncut-sheets">{uncutSheetsAtStation}</span>
@@ -380,7 +420,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/60 animate-pulse'
                   : 'text-stone-500'
               }`}
-              title="שלב 3: מגנטים חתוכים ביד להדבקה על הלוח"
+              title="שלב 4: מגנטים חתוכים ביד להדבקה על הלוח"
             >
               <span>🧲</span>
               <span data-testid="hud-cut-magnets">{cutMagnetsInHand}</span>
@@ -631,16 +671,45 @@ export const GameHud: React.FC<GameHudProps> = ({
       <div className="flex flex-col items-center gap-1 w-full mt-auto z-30">
         {/* Context Action Buttons when standing near Workstation or Board */}
         <div className="flex flex-wrap justify-center items-center gap-1.5 pointer-events-auto">
-          {isNearStation && onStationAction && uncutSheetsAtStation === 0 && photosInCamera > 0 && (
-            <button
-              type="button"
-              onClick={onStationAction}
-              className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-black text-[11px] sm:text-xs border border-stone-950 shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
-            >
-              <span>🖨️</span>
-              <span>שלב 1: פתח {photosInCamera} תמונות במדפסת! [E]</span>
-            </button>
+          {isNearStation &&
+            onStationAction &&
+            uncutSheetsAtStation === 0 &&
+            photosTransferring === 0 &&
+            photosOnComputer === 0 &&
+            photosInCamera > 0 && (
+              <button
+                type="button"
+                onClick={onStationAction}
+                className="px-2.5 py-1 rounded-lg bg-lime-400 hover:bg-lime-300 text-stone-950 font-black text-[11px] sm:text-xs border border-stone-950 shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <span>💾</span>
+                <span>שלב 1: העבר {photosInCamera} תמונות מהמצלמה למחשב! [E]</span>
+              </button>
+            )}
+
+          {isNearStation && photosTransferring > 0 && (
+            <div className="px-2.5 py-1 rounded-lg bg-stone-900/90 text-lime-200 font-black text-[11px] sm:text-xs border border-lime-400/70 shadow-md flex items-center gap-1.5">
+              <span>💾</span>
+              <span>
+                מעביר {photosTransferring} תמונות למחשב… {transferRemainingSec.toFixed(1)} שנ' · המצלמה על השולחן
+              </span>
+            </div>
           )}
+
+          {isNearStation &&
+            onStationAction &&
+            uncutSheetsAtStation === 0 &&
+            photosTransferring === 0 &&
+            photosOnComputer > 0 && (
+              <button
+                type="button"
+                onClick={onStationAction}
+                className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-black text-[11px] sm:text-xs border border-stone-950 shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <span>🖨️</span>
+                <span>שלב 2: הדפס {photosOnComputer} תמונות במדפסת! [E]</span>
+              </button>
+            )}
 
           {isNearStation && onStationAction && uncutSheetsAtStation > 0 && (
             <button
@@ -649,7 +718,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               className="px-2.5 py-1 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-stone-950 font-black text-[11px] sm:text-xs border border-stone-950 shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
             >
               <span>✂️</span>
-              <span>שלב 2: חתוך {uncutSheetsAtStation} מגנטים בחותך! [E]</span>
+              <span>שלב 3: חתוך {uncutSheetsAtStation} מגנטים בחותך! [E]</span>
             </button>
           )}
 
@@ -660,7 +729,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               className="px-2.5 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-black text-[11px] sm:text-xs border border-stone-950 shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
             >
               <span>🧲</span>
-              <span>שלב 3: הדבק {cutMagnetsInHand} מגנטים על הלוח! [E]</span>
+              <span>שלב 4: הדבק {cutMagnetsInHand} מגנטים על הלוח! [E]</span>
             </button>
           )}
 

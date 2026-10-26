@@ -15,6 +15,10 @@ interface MobileControlsProps {
   isNearStation: boolean;
   isNearBoard?: boolean;
   photosInCamera: number;
+  /** Photos copied to the laptop, ready to print */
+  photosOnComputer?: number;
+  /** Seconds left of an in-progress camera → laptop copy (0 when idle) */
+  transferRemainingSec?: number;
   uncutSheetsAtStation?: number;
   cutMagnetsInHand?: number;
   availableMagnets?: number;
@@ -32,6 +36,8 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
   isNearStation,
   isNearBoard = false,
   photosInCamera,
+  photosOnComputer = 0,
+  transferRemainingSec = 0,
   uncutSheetsAtStation = 0,
   cutMagnetsInHand = 0,
   availableMagnets = 0,
@@ -376,7 +382,12 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
       {/* Right: Mobile Action Buttons (Photo Flash, Dash, Magnet Station, Lens Toggle) */}
       <div className="flex flex-col items-end gap-2 pointer-events-auto">
         {/* Step 1 / Step 2 / Step 3 Context Action Button */}
-        {(isNearStation || isNearBoard || photosInCamera > 0 || uncutSheetsAtStation > 0 || cutMagnetsInHand > 0) && (
+        {(isNearStation ||
+          isNearBoard ||
+          photosInCamera > 0 ||
+          photosOnComputer > 0 ||
+          uncutSheetsAtStation > 0 ||
+          cutMagnetsInHand > 0) && (
           <button
             type="button"
             onPointerDown={handleStationTrigger}
@@ -391,19 +402,31 @@ export const MobileControls: React.FC<MobileControlsProps> = ({
             }`}
           >
             <span className="text-base">
-              {cutMagnetsInHand > 0 ? '🧲' : uncutSheetsAtStation > 0 ? '✂️' : '🖨️'}
+              {cutMagnetsInHand > 0
+                ? '🧲'
+                : uncutSheetsAtStation > 0
+                ? '✂️'
+                : transferRemainingSec > 0 || (photosOnComputer === 0 && photosInCamera > 0)
+                ? '💾'
+                : '🖨️'}
             </span>
             <span>
               {cutMagnetsInHand > 0
                 ? isNearBoard
-                  ? `שלב 3: הדבק ${cutMagnetsInHand} מגנטים בלוח!`
+                  ? `שלב 4: הדבק ${cutMagnetsInHand} מגנטים בלוח!`
                   : `קח ${cutMagnetsInHand} מגנטים ללוח הרחבה`
                 : uncutSheetsAtStation > 0
                 ? isNearStation
-                  ? `שלב 2: חתוך ${uncutSheetsAtStation} מגנטים בחותך!`
+                  ? `שלב 3: חתוך ${uncutSheetsAtStation} מגנטים בחותך!`
                   : `גש לחתוך (${uncutSheetsAtStation} דפים)`
+                : transferRemainingSec > 0
+                ? `מעביר למחשב… ${transferRemainingSec.toFixed(1)} שנ'`
+                : photosOnComputer > 0
+                ? isNearStation
+                  ? `שלב 2: הדפס ${photosOnComputer} תמונות`
+                  : `לעמדה בפינה (${photosOnComputer} במחשב)`
                 : isNearStation
-                ? `שלב 1: פתח ${photosInCamera} תמונות במדפסת`
+                ? `שלב 1: העבר ${photosInCamera} תמונות למחשב`
                 : `לעמדה בפינה (${photosInCamera} תמונות)`}
             </span>
           </button>

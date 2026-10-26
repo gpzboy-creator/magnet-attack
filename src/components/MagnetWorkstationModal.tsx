@@ -22,8 +22,15 @@ import {
 export interface MagnetWorkstationModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Photos on the laptop, ready to print (the print queue). */
   photosInCamera: number;
   maxPhotosInCamera?: number;
+  /** Photos still on the camera's card (must be copied to the laptop first). */
+  photosOnCameraCard?: number;
+  isTransferringCard?: boolean;
+  transferRemainingSec?: number;
+  /** Starts copying the camera card to the laptop. */
+  onTransferPhotos?: () => void;
   uncutSheetsAtStation: number;
   cutMagnetsInHand: number;
   availableMagnetsOnBoard?: number;
@@ -44,6 +51,10 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
   onClose,
   photosInCamera,
   maxPhotosInCamera = 12,
+  photosOnCameraCard = 0,
+  isTransferringCard = false,
+  transferRemainingSec = 0,
+  onTransferPhotos,
   uncutSheetsAtStation,
   cutMagnetsInHand,
   selectedFrame = 'gold',
@@ -97,6 +108,7 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
   // Refs for latest state inside 60fps animation loop
   const stateRef = useRef({
     photosInCamera,
+    isTransferringCard,
     uncutSheetsAtStation,
     cutMagnetsInHand,
     printJob,
@@ -104,6 +116,7 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
   });
   stateRef.current = {
     photosInCamera,
+    isTransferringCard,
     uncutSheetsAtStation,
     cutMagnetsInHand,
     printJob,
@@ -178,7 +191,10 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
           drawPixelLaptop(ctx, 0, 0, lapCanvas.width, lapCanvas.height, {
             isPrinting: isPrintingNow,
             isCutting: isCuttingNow,
-            photosInCamera: cur.photosInCamera,
+            photosInCamera: 0,
+            photosOnComputer: cur.photosInCamera,
+            isTransferring: cur.isTransferringCard,
+            transferProgress: (clockSec * 0.6) % 1,
             uncutSheets: idleUncutSheets,
             sheetProgress: isPrintingNow ? pProg.sheetProgress : 0,
             currentSheet: isPrintingNow ? pProg.currentSheet : 1,
@@ -390,11 +406,18 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
         <div className="grid grid-cols-3 gap-2 sm:gap-4 bg-stone-950/80 border border-stone-800 rounded-xl p-2.5 text-center">
           <div className={`flex flex-col p-2 rounded-lg border ${photosInCamera > 0 ? 'border-amber-400 bg-amber-500/10' : 'border-stone-800'}`}>
             <span className="text-[11px] font-bold text-amber-300 uppercase">
-              📸 1. תמונות בכרטיס ({Math.ceil(photosInCamera / PHOTOS_PER_SHEET)} דפים)
+              💻 1-2. תמונות במחשב ({Math.ceil(photosInCamera / PHOTOS_PER_SHEET)} דפים)
             </span>
             <span dir="ltr" className="text-xl sm:text-2xl font-black font-mono text-amber-300">
-              {photosInCamera} / {maxPhotosInCamera}
+              {photosInCamera}
             </span>
+            {(photosOnCameraCard > 0 || isTransferringCard) && (
+              <span className="text-[10px] font-bold text-lime-300">
+                {isTransferringCard
+                  ? `💾 מעביר מהכרטיס… ${transferRemainingSec.toFixed(1)} שנ'`
+                  : `💾 עוד ${photosOnCameraCard}/${maxPhotosInCamera} בכרטיס המצלמה`}
+              </span>
+            )}
           </div>
           <div className={`flex flex-col p-2 rounded-lg border ${uncutSheetsAtStation > 0 ? 'border-cyan-400 bg-cyan-500/10 animate-pulse' : 'border-stone-800'}`}>
             <span className="text-[11px] font-bold text-cyan-300 uppercase">
@@ -546,10 +569,35 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
                 </div>
               </div>
 
-              <div className="mt-2.5 bg-stone-900/90 border border-stone-800 rounded-lg py-2 px-2.5 text-[11px] text-stone-300 flex items-center justify-between">
-                <span>📄 4 תמונות בכל דף מגנט (0.5 שנ')</span>
-                <span className="font-mono text-amber-300 font-bold">← USB</span>
-              </div>
+              {/* Step 1: copy the camera card to the laptop (camera goes down on the desk) */}
+              <button
+                type="button"
+                onClick={() => onTransferPhotos?.()}
+                disabled={
+                  !onTransferPhotos ||
+                  isTransferringCard ||
+                  photosOnCameraCard <= 0 ||
+                  photosInCamera > 0
+                }
+                className={`mt-2.5 w-full py-2.5 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 border transition-all ${
+                  isTransferringCard
+                    ? 'bg-lime-950 text-lime-300 border-lime-500 cursor-wait'
+                    : photosOnCameraCard > 0 && photosInCamera === 0
+                    ? 'bg-gradient-to-r from-lime-400 to-lime-500 hover:from-lime-300 hover:to-lime-400 text-stone-950 border-lime-200 shadow-lg active:scale-95 cursor-pointer'
+                    : 'bg-stone-800 text-stone-500 border-stone-700 cursor-not-allowed'
+                }`}
+              >
+                <span>💾</span>
+                <span>
+                  {isTransferringCard
+                    ? `מעביר תמונות למחשב… (${transferRemainingSec.toFixed(1)} שנ')`
+                    : photosOnCameraCard > 0 && photosInCamera > 0
+                    ? 'הדפס קודם את התמונות שכבר במחשב'
+                    : photosOnCameraCard > 0
+                    ? `שלב 1: העבר ${photosOnCameraCard} תמונות מהמצלמה למחשב`
+                    : 'אין תמונות בכרטיס המצלמה'}
+                </span>
+              </button>
             </div>
 
             {/* 2. Pixel-Art Thermal Printer (Mitsubishi Electric Reference) */}
@@ -625,8 +673,8 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
                   {printJob.active
                     ? `מדפיס דף ${activePrintSheetInfo.currentSheet}/${printJob.totalSheets} (${printJob.remainingSec.toFixed(1)} שנ')...`
                     : photosInCamera > 0
-                    ? `שלב 1: הדפס ${photosInCamera} תמונות (${printTiming.sheetCount} דפים · ${printTiming.totalDurationSec} שנ')`
-                    : 'אין תמונות במצלמה לפיתוח'}
+                    ? `שלב 2: הדפס ${photosInCamera} תמונות (${printTiming.sheetCount} דפים · ${printTiming.totalDurationSec} שנ')`
+                    : 'אין תמונות במחשב — העבר קודם מהמצלמה'}
                 </span>
               </button>
             </div>
@@ -706,7 +754,7 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
                     : printJob.active
                     ? 'ממתין לסיום הוצאת הדפים מהמדפסת...'
                     : uncutSheetsAtStation > 0
-                    ? `שלב 2: חתוך ${uncutSheetsAtStation} מגנטים (${cutTiming.sheetCount} דפים · ${cutTiming.totalDurationSec} שנ')`
+                    ? `שלב 3: חתוך ${uncutSheetsAtStation} מגנטים (${cutTiming.sheetCount} דפים · ${cutTiming.totalDurationSec} שנ')`
                     : 'הדפס קודם תמונות במדפסת'}
                 </span>
               </button>

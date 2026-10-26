@@ -44,6 +44,12 @@ export interface LaptopPixelAnimState {
   isPrinting: boolean;
   isCutting: boolean;
   photosInCamera: number;
+  /** Copying photos from the camera card (card sticking out of the laptop's slot). */
+  isTransferring?: boolean;
+  /** 0..1 progress of the current card copy. */
+  transferProgress?: number;
+  /** Photos already on the laptop, waiting to be printed. */
+  photosOnComputer?: number;
   uncutSheets: number;
   sheetProgress: number;
   currentSheet: number;
@@ -734,25 +740,55 @@ export function drawPixelLaptop(
     state.isPrinting ? state.currentSheet : 0
   );
 
+  // CARD COPY SCREEN: SD-card icon + photos flying into a folder + progress bar
+  if (state.isTransferring) {
+    const prog = Math.max(0, Math.min(1, state.transferProgress ?? 0));
+    pRect(ctx, 17, 17, 48, 24, '#14532d');
+    // SD card icon (left)
+    pRect(ctx, 21, 21, 9, 12, '#f97316');
+    pRect(ctx, 21, 21, 3, 3, '#14532d');
+    pRect(ctx, 23, 24, 5, 2, '#fde68a');
+    // Folder icon (right)
+    pRect(ctx, 51, 23, 11, 9, '#facc15');
+    pRect(ctx, 51, 21, 5, 2, '#facc15');
+    // Thumbnails travelling from card to folder
+    const travel = Math.floor(state.timeSec * 22) % 18;
+    pRect(ctx, 32 + travel, 25, 3, 3, '#ffffff');
+    pRect(ctx, 32 + ((travel + 9) % 18), 27, 3, 3, '#bbf7d0');
+    // Progress bar
+    pRect(ctx, 20, 36, 42, 3, '#052e16');
+    pRect(ctx, 20, 36, Math.max(1, Math.round(42 * prog)), 3, '#4ade80');
+  }
+
+  // SD card sticking out of the laptop's side slot while the camera card is mounted
+  if (state.isTransferring) {
+    pRect(ctx, 68, 47, 6, 4, '#f97316');
+    pRect(ctx, 69, 48, 3, 1, '#fde68a');
+    if (Math.floor(state.timeSec * 8) % 2 === 0) pRect(ctx, 66, 46, 1, 1, '#4ade80');
+  }
+
   // Right Sidebar on Laptop Screen (Queue + Live Print Progress Bar)
-  pRect(ctx, 47, 19, 16, 16, '#1e293b');
+  if (!state.isTransferring) pRect(ctx, 47, 19, 16, 16, '#1e293b');
+  const readyToPrint = (state.photosOnComputer ?? 0) > 0;
   const activeBarW = state.isPrinting
     ? Math.max(2, Math.round(state.sheetProgress * 12))
-    : state.photosInCamera > 0
+    : readyToPrint
     ? 12
     : 3;
-  pRect(ctx, 49, 22, 12, 3, '#0f172a');
-  pRect(
-    ctx,
-    49,
-    22,
-    activeBarW,
-    3,
-    state.isPrinting ? '#38bdf8' : state.photosInCamera > 0 ? '#fbbf24' : '#475569'
-  );
-  // Mini status bars on screen
-  pRect(ctx, 49, 27, 10, 2, '#22c55e');
-  pRect(ctx, 49, 31, 8, 2, '#f472b6');
+  if (!state.isTransferring) {
+    pRect(ctx, 49, 22, 12, 3, '#0f172a');
+    pRect(
+      ctx,
+      49,
+      22,
+      activeBarW,
+      3,
+      state.isPrinting ? '#38bdf8' : readyToPrint ? '#a3e635' : '#475569'
+    );
+    // Mini status bars on screen
+    pRect(ctx, 49, 27, 10, 2, '#22c55e');
+    pRect(ctx, 49, 31, 8, 2, '#f472b6');
+  }
 
   // Laptop Keyboard Base (Trapezoid perspective in front of screen)
   for (let row = 0; row < 15; row++) {

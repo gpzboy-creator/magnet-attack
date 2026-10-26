@@ -420,6 +420,8 @@ export default function App() {
           isNearStation={Boolean(hud.isAtMagnetStation)}
           isNearBoard={Boolean(hud.isNearBoard)}
           photosInCamera={hud.photosInCamera ?? 0}
+          photosOnComputer={hud.photosOnComputer ?? 0}
+          transferRemainingSec={hud.transferRemainingSec ?? 0}
           uncutSheetsAtStation={hud.uncutSheetsAtStation ?? 0}
           cutMagnetsInHand={hud.cutMagnetsInHand ?? 0}
           availableMagnets={hud.availableMagnetsOnBoard ?? 0}
@@ -446,8 +448,12 @@ export default function App() {
       <MagnetWorkstationModal
         isOpen={isWorkstationModalOpen}
         onClose={() => setIsWorkstationModalOpen(false)}
-        photosInCamera={hud.photosInCamera ?? 0}
+        photosInCamera={hud.photosOnComputer ?? 0}
         maxPhotosInCamera={hud.maxPhotosInCamera ?? 12}
+        photosOnCameraCard={hud.photosInCamera ?? 0}
+        isTransferringCard={(hud.photosTransferring ?? 0) > 0}
+        transferRemainingSec={hud.transferRemainingSec ?? 0}
+        onTransferPhotos={handleDevelopAction}
         uncutSheetsAtStation={hud.uncutSheetsAtStation ?? 0}
         cutMagnetsInHand={hud.cutMagnetsInHand ?? 0}
         availableMagnetsOnBoard={hud.availableMagnetsOnBoard ?? 0}

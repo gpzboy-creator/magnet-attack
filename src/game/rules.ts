@@ -274,6 +274,7 @@ export function getWaveConfig(wave: number): WaveConfig {
 
 export interface MagnetWorkflowState {
   photosInCamera: number;       // 1. Raw photos snapped on dancefloor/tables
+  photosOnComputer?: number;    // 1b. Copied from the camera card to the laptop, ready to print
   uncutSheetsAtStation: number; // 2. Developed & laminated onto adhesive magnet sheets at Corner Workstation
   cutMagnetsInHand: number;     // 3. Sliced with the Guillotine Cutter, held by photographer
   magnetsOnBoard: number;       // 4. Stuck onto the Tripod Magnetic Whiteboard next to dancefloor
@@ -286,15 +287,23 @@ export interface MagnetWorkflowState {
  */
 export function getActiveWorkflowObjective(
   state: MagnetWorkflowState
-): 'dancefloor' | 'workstation_develop' | 'workstation_cut' | 'board_stick' {
+):
+  | 'dancefloor'
+  | 'workstation_transfer'
+  | 'workstation_develop'
+  | 'workstation_cut'
+  | 'board_stick' {
   if (state.cutMagnetsInHand > 0) {
     return 'board_stick';
   }
   if (state.uncutSheetsAtStation > 0) {
     return 'workstation_cut';
   }
-  if (state.photosInCamera > 0) {
+  if ((state.photosOnComputer ?? 0) > 0) {
     return 'workstation_develop';
+  }
+  if (state.photosInCamera > 0) {
+    return 'workstation_transfer';
   }
   return 'dancefloor';
 }
@@ -1280,4 +1289,67 @@ export function computePhotographerPose(params: {
     breathScaleX: 1 - breath * 0.012,
     breathScaleY: 1 + breath * 0.022,
   };
+}
+
+// ============================================================================
+// CAMERA → COMPUTER CARD TRANSFER (step before printing)
+// ============================================================================
+
+/** Fixed overhead of inserting the card / mounting it on the laptop. */
+export const CARD_TRANSFER_BASE_SEC = 0.6;
+/** Copy time per photo. */
+export const CARD_TRANSFER_SEC_PER_PHOTO = 0.12;
+
+/**
+ * How long copying the camera's card to the laptop takes. The turbo-station upgrade
+ * (speedMultiplier > 1) also speeds up the card reader.
+ */
+export function calculateCardTransferTiming(
+  photoCount: number,
+  speedMultiplier = 1
+): { totalDurationSec: number; secondsPerPhoto: number } {
+  const count = Math.max(0, Math.floor(photoCount));
+  const mult = Math.max(0.1, speedMultiplier);
+  const secondsPerPhoto = CARD_TRANSFER_SEC_PER_PHOTO / mult;
+  const totalDurationSec = Number(((CARD_TRANSFER_BASE_SEC + count * CARD_TRANSFER_SEC_PER_PHOTO) / mult).toFixed(2));
+  return { totalDurationSec, secondsPerPhoto };
+}
+
+/**
+ * The camera sits on the desk (card in the laptop) from the moment a transfer starts.
+ * The photographer takes it back automatically once the copy has finished, he has left
+ * the chair, and he is still at the workstation. If he walks away mid-transfer the camera
+ * stays on the desk until he comes back.
+ */
+export function shouldPickUpCameraFromDesk(params: {
+  cameraOnDesk: boolean;
+  transferRemainingSec: number;
+  isSeatedAtStation: boolean;
+  isNearStation: boolean;
+}): boolean {
+  return (
+    params.cameraOnDesk &&
+    params.transferRemainingSec <= 0 &&
+    !params.isSeatedAtStation &&
+    params.isNearStation
+  );
+}
+
+export type WorkstationActionKind = 'busy_transfer' | 'cut' | 'print' | 'transfer' | 'none';
+
+/**
+ * Which job the [E] action starts at the workstation. Finishing work further down the
+ * pipeline comes first: cut ready sheets → print transferred photos → copy the camera card.
+ */
+export function chooseWorkstationAction(state: {
+  isTransferring: boolean;
+  uncutSheetsAtStation: number;
+  photosOnComputer: number;
+  photosInCamera: number;
+}): WorkstationActionKind {
+  if (state.uncutSheetsAtStation > 0) return 'cut';
+  if (state.isTransferring) return 'busy_transfer';
+  if (state.photosOnComputer > 0) return 'print';
+  if (state.photosInCamera > 0) return 'transfer';
+  return 'none';
 }

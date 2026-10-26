@@ -42,6 +42,9 @@ import {
   PLAYER_DASH_RATE,
   PLAYER_DECEL_RATE,
   approachVelocity,
+  calculateCardTransferTiming,
+  chooseWorkstationAction,
+  shouldPickUpCameraFromDesk,
   computePhotographerPose,
   getCameraLensScreenOffset,
   isBackFacingDirection,
@@ -290,7 +293,7 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   // Dancefloor subwoofer
   { kind: 'box', minX: -102, minY: 56, maxX: -76, maxY: 80 },
   // Magnet workstation desk (the chair in front of it stays reachable)
-  { kind: 'box', minX: WORKSTATION_POS.x - 42, minY: WORKSTATION_POS.y - 28, maxX: WORKSTATION_POS.x + 46, maxY: WORKSTATION_POS.y + 22 },
+  { kind: 'box', minX: WORKSTATION_POS.x - 70, minY: WORKSTATION_POS.y - 28, maxX: WORKSTATION_POS.x + 46, maxY: WORKSTATION_POS.y + 22 },
   // Tripod magnet board easel
   { kind: 'circle', x: TRIPOD_BOARD_POS.x, y: TRIPOD_BOARD_POS.y, r: 10 },
 ];
@@ -772,6 +775,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       direction: 'NE' as IsoDirection,
       animState: 'idle' as IsoAnimState,
       photosInCamera: 0, // Stage 1: Raw photos in camera memory
+      photosOnComputer: 0, // Stage 1b: Copied from the camera card to the laptop, ready to print
+      cameraOnDesk: false, // Camera put down on the workstation desk (card in the laptop) → can't shoot
+      transferAnimTimer: 0,
+      transferAnimDuration: 0,
+      transferBatch: 0,
       uncutSheetsAtStation: 0, // Stage 2: Printed & laminated onto magnetic sheets at Corner Workstation
       cutMagnetsInHand: 0, // Stage 3: Sliced by Guillotine Cutter, held in hand to stick on Tripod Board
       isNearStation: false,
@@ -867,9 +875,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       purchaseUpgrade(id);
     };
 
-    // Step 1 at Corner Workstation: Develop photos via Laptop & Thermal Printer + Stick onto magnetic paper sheets
-    // Timing: Every 4 photos = 1 sheet = 0.5 seconds (scaled by turbo_station upgrade)!
-    const developAtWorkstation = () => {
+    // Step 1 at Corner Workstation: put the camera down on the desk, card into the laptop,
+    // and copy the photos. While the camera is on the desk the photographer can't shoot.
+    const transferCardToComputer = () => {
+      if (player.transferAnimTimer > 0) {
+        player.stationFeedbackText = `💾 מעביר תמונות למחשב... (${player.transferAnimTimer.toFixed(1)} שנ')`;
+        player.stationFeedbackTimer = 1.6;
+        return;
+      }
       if (player.photosInCamera <= 0) {
         player.stationFeedbackText = 'אין תמונות במצלמה! צלם אורחים ברחבה ובשולחנות 📸';
         player.stationFeedbackTimer = 2.2;
@@ -878,12 +891,61 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
       const batch = player.photosInCamera;
+      const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
+      const job = calculateCardTransferTiming(batch, speedMult);
+
+      player.cameraOnDesk = true;
+      player.photosInCamera = 0; // card is in the laptop now
+      player.transferBatch = batch;
+      player.transferAnimDuration = job.totalDurationSec;
+      player.transferAnimTimer = job.totalDurationSec;
+      player.stationActionTimer = Math.max(player.stationActionTimer, job.totalDurationSec);
+      sound.playDanceBump();
+      spawnParticles(WORKSTATION_POS.x - 30, WORKSTATION_POS.y + 6, 10, '#4ade80', 90, 40);
+
+      player.stationFeedbackText = `💾 המצלמה על השולחן והכרטיס במחשב — מעביר ${batch} תמונות (${job.totalDurationSec.toFixed(1)} שנ'). אי אפשר לצלם עכשיו!`;
+      player.stationFeedbackTimer = Math.max(2.6, job.totalDurationSec + 0.8);
+      hudEmitTimer = 1;
+    };
+
+    // Called when the copy finishes: photos are on the laptop, ready for the thermal printer
+    const finishCardTransfer = () => {
+      player.photosOnComputer += player.transferBatch;
+      player.transferBatch = 0;
+      sound.playComboChime(1);
+      player.stationFeedbackText = player.isSeatedAtStation
+        ? `✅ ${player.photosOnComputer} תמונות במחשב! לחץ [E] להדפסה 🖨️ · קום מהכסא כדי לקחת את המצלמה`
+        : `✅ ההעברה הסתיימה! קח את המצלמה מהשולחן 📷`;
+      player.stationFeedbackTimer = 3;
+      hudEmitTimer = 1;
+    };
+
+    // Step 2 at Corner Workstation: Print the transferred photos via the Thermal Printer onto magnetic sheets
+    // Timing: Every 4 photos = 1 sheet = 0.5 seconds (scaled by turbo_station upgrade)!
+    const developAtWorkstation = () => {
+      if (player.transferAnimTimer > 0) {
+        transferCardToComputer(); // shows the "still copying" message
+        return;
+      }
+      if (player.photosOnComputer <= 0) {
+        if (player.photosInCamera > 0) {
+          // Photos are still on the camera card → copy them to the laptop first
+          transferCardToComputer();
+          return;
+        }
+        player.stationFeedbackText = 'אין תמונות במחשב! צלם אורחים והעבר את התמונות מהמצלמה 📸💾';
+        player.stationFeedbackTimer = 2.2;
+        sound.playDanceBump();
+        return;
+      }
+
+      const batch = player.photosOnComputer;
       const maxCap = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
       const batchBonus = calculateBatchPrintBonus(batch, maxCap);
       const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
       const job = calculateWorkstationJobTiming(batch, speedMult);
 
-      player.photosInCamera = 0;
+      player.photosOnComputer = 0;
       player.uncutSheetsAtStation += batch;
       player.printerAnimDuration = job.totalDurationSec;
       player.printerAnimTimer = job.totalDurationSec;
@@ -910,7 +972,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // Timing: Every 4 photos = 1 sheet = 0.5 seconds (scaled by turbo_station upgrade)!
     const cutAtWorkstation = () => {
       if (player.uncutSheetsAtStation <= 0) {
-        if (player.photosInCamera > 0) {
+        if (player.photosOnComputer > 0 || player.photosInCamera > 0) {
           developAtWorkstation();
           return;
         }
@@ -1006,7 +1068,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.stationFeedbackTimer = 3.5;
 
       // Reset delivery SLA timer for the next batch if all items are delivered
-      const remainingPending = player.photosInCamera + player.uncutSheetsAtStation + player.cutMagnetsInHand;
+      const remainingPending = player.photosInCamera + player.transferBatch + player.photosOnComputer + player.uncutSheetsAtStation + player.cutMagnetsInHand;
       magnetDeliveryTracker =
         remainingPending > 0
           ? {
@@ -1033,11 +1095,21 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       // 2. If near the Far-Corner Workstation:
       if (player.isNearStation) {
-        if (player.uncutSheetsAtStation > 0) {
+        const stationAction = chooseWorkstationAction({
+          isTransferring: player.transferAnimTimer > 0,
+          uncutSheetsAtStation: player.uncutSheetsAtStation,
+          photosOnComputer: player.photosOnComputer,
+          photosInCamera: player.photosInCamera,
+        });
+        if (stationAction === 'cut') {
           cutAtWorkstation();
           return;
         }
-        if (player.photosInCamera > 0) {
+        if (stationAction === 'busy_transfer' || stationAction === 'transfer') {
+          transferCardToComputer();
+          return;
+        }
+        if (stationAction === 'print') {
           developAtWorkstation();
           return;
         }
@@ -1056,7 +1128,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           callGuestsToBoard();
         } else {
           player.stationFeedbackText =
-            player.photosInCamera > 0 || player.uncutSheetsAtStation > 0
+            player.photosInCamera > 0 || player.photosOnComputer > 0 || player.uncutSheetsAtStation > 0
               ? 'גש לעמדת המגנטים בפינה הימנית לפתח ולחתוך את התמונות! 🖨️✂️'
               : 'צלם אורחים ברחבה, פתח וחתוך בעמדה בפינה, ואז הדבק כאן על הלוח! 📸🧲';
           player.stationFeedbackTimer = 2.6;
@@ -1144,8 +1216,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       magnetsPrintedThisWave = 0;
       pendingBoardSticks = 0;
       player.photosInCamera = 0;
+      player.photosOnComputer = 0;
       player.uncutSheetsAtStation = 0;
       player.cutMagnetsInHand = 0;
+      player.cameraOnDesk = false;
+      player.transferAnimTimer = 0;
+      player.transferBatch = 0;
       trackTimeRemaining = cfg.trackDurationSec;
 
       // Spawn first VIP Moment right away so the hall feels alive!
@@ -1368,6 +1444,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.direction = 'NE';
       player.animState = 'idle';
       player.photosInCamera = 0;
+      player.photosOnComputer = 0;
+      player.cameraOnDesk = false;
+      player.transferAnimTimer = 0;
+      player.transferAnimDuration = 0;
+      player.transferBatch = 0;
       player.uncutSheetsAtStation = 0;
       player.cutMagnetsInHand = 0;
       player.isNearStation = false;
@@ -1941,6 +2022,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       if (player.printerAnimTimer > 0) {
         player.printerAnimTimer = Math.max(0, player.printerAnimTimer - dt);
       }
+      if (player.transferAnimTimer > 0) {
+        player.transferAnimTimer = Math.max(0, player.transferAnimTimer - dt);
+        if (player.transferAnimTimer === 0) finishCardTransfer();
+      }
       if (player.cutterAnimTimer > 0) {
         player.cutterAnimTimer = Math.max(0, player.cutterAnimTimer - dt);
       }
@@ -2166,7 +2251,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // Update Magnet Delivery SLA Timer ("הוצאת מגנט בזמן")
           const pendingMagnetsInPipeline =
-            player.photosInCamera + player.uncutSheetsAtStation + player.cutMagnetsInHand;
+            player.photosInCamera + player.transferBatch + player.photosOnComputer + player.uncutSheetsAtStation + player.cutMagnetsInHand;
           const deliveryStep = stepMagnetDeliveryTracker(
             magnetDeliveryTracker,
             pendingMagnetsInPipeline,
@@ -2271,12 +2356,40 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           });
           player.bumpFlashTimer = Math.max(0, player.bumpFlashTimer - simDt);
 
-          if (wantsShoot && player.shootCooldown <= 0) {
+          // Take the camera back from the desk once the copy is done and the photographer is up from the chair
+          if (
+            shouldPickUpCameraFromDesk({
+              cameraOnDesk: player.cameraOnDesk,
+              transferRemainingSec: player.transferAnimTimer,
+              isSeatedAtStation: player.isSeatedAtStation,
+              isNearStation: player.isNearStation,
+            })
+          ) {
+            player.cameraOnDesk = false;
+            player.scaleX = 0.94;
+            player.scaleY = 1.06;
+            sound.playDanceBump();
+            player.stationFeedbackText = '📷 לקחת את המצלמה מהשולחן — אפשר לחזור לצלם!';
+            player.stationFeedbackTimer = 2;
+          }
+
+          if (wantsShoot && player.shootCooldown <= 0 && player.cameraOnDesk) {
+            // No camera in hand: it's on the workstation desk with the card in the laptop
+            player.shootCooldown = 0.6;
+            sound.playDanceBump();
+            player.stationFeedbackText =
+              player.transferAnimTimer > 0
+                ? `📷 המצלמה על השולחן — ההעברה למחשב עוד לא הסתיימה (${player.transferAnimTimer.toFixed(1)} שנ')`
+                : player.isSeatedAtStation
+                ? '📷 המצלמה על השולחן — קום מהכסא כדי לקחת אותה'
+                : '📷 המצלמה נשארה על שולחן העבודה! חזור לעמדה לקחת אותה';
+            player.stationFeedbackTimer = 2.2;
+          } else if (wantsShoot && player.shootCooldown <= 0) {
             const maxCap = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
             if (player.photosInCamera >= maxCap) {
               player.shootCooldown = 0.35;
               sound.playDanceBump();
-              player.stationFeedbackText = `💾 כרטיס הזיכרון מלא (${maxCap}/${maxCap})! רוץ לעמדה בפינה לפתח בבונוס כפול x2! 🖨️`;
+              player.stationFeedbackText = `💾 כרטיס הזיכרון מלא (${maxCap}/${maxCap})! רוץ לעמדה בפינה להעביר למחשב ולהדפיס בבונוס כפול x2! 💾`;
               player.stationFeedbackTimer = 2.4;
             } else {
               const aimWorld = isoToWorld(
@@ -3341,7 +3454,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // Glowing LED Under-Table Floor Aura
           const hasWorkstationTask =
-            player.photosInCamera > 0 || player.uncutSheetsAtStation > 0;
+            player.photosInCamera > 0 ||
+            player.photosOnComputer > 0 ||
+            player.cameraOnDesk ||
+            player.uncutSheetsAtStation > 0;
           const auraRadius = player.isNearStation ? 92 : hasWorkstationTask ? 76 : 58;
           const auraGrad = ctx.createRadialGradient(sx, sy + 6, 10, sx, sy + 6, auraRadius);
           if (player.uncutSheetsAtStation > 0) {
@@ -3360,12 +3476,13 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           ctx.fill();
 
           // 1. Fitted Black & Gold Pleated Workstation Table Skirt
+          // Desk widened (116 wide) so the camera has room next to the laptop
           drawIsoBox(
             originX,
             originY,
-            WORKSTATION_POS.x - 42,
+            WORKSTATION_POS.x - 70,
             WORKSTATION_POS.y - 28,
-            88,
+            116,
             50,
             34,
             '#1e293b',
@@ -3378,9 +3495,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           drawIsoBox(
             originX,
             originY,
-            WORKSTATION_POS.x - 39,
+            WORKSTATION_POS.x - 67,
             WORKSTATION_POS.y - 25,
-            82,
+            110,
             44,
             2.5,
             '#0f172a',
@@ -3407,6 +3524,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // Glowing USB Data Cable connecting Laptop to Thermal Printer on table top
           const lapAnchorIso = worldToIso(WORKSTATION_POS.x - 28, WORKSTATION_POS.y - 10, 46);
+          const isTransferringNow = player.transferAnimTimer > 0;
+          const transferProg =
+            player.transferAnimDuration > 0
+              ? 1 - player.transferAnimTimer / player.transferAnimDuration
+              : 0;
           const prnAnchorIso = worldToIso(WORKSTATION_POS.x - 2, WORKSTATION_POS.y - 4, 48);
           ctx.strokeStyle = isPrintingNow ? '#38bdf8' : '#fbbf24';
           ctx.lineWidth = 1.8;
@@ -3431,16 +3553,53 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               isPrinting: isPrintingNow,
               isCutting: isCuttingNow,
               photosInCamera: player.photosInCamera,
+              isTransferring: isTransferringNow,
+              transferProgress: transferProg,
+              photosOnComputer: player.photosOnComputer,
               uncutSheets: idleUncutSheets,
               sheetProgress: isPrintingNow ? pProg.sheetProgress : 0,
               currentSheet: isPrintingNow ? pProg.currentSheet : 1,
               totalSheets: isPrintingNow
                 ? player.printerTotalSheets
-                : Math.ceil(player.photosInCamera / PHOTOS_PER_SHEET),
+                : Math.ceil(player.photosOnComputer / PHOTOS_PER_SHEET),
               timeSec: discoBeatPhase,
             },
             { transparentBg: true }
           );
+
+          // 2b. The photographer's DSLR lying on the desk while its card is in the laptop
+          if (player.cameraOnDesk) {
+            // Left end of the widened desk, clear of the seated photographer so it stays visible
+            const camIso = worldToIso(WORKSTATION_POS.x - 62, WORKSTATION_POS.y + 12, 35);
+            const cx = Math.round(originX + camIso.x);
+            const cy = Math.round(originY + camIso.y);
+            ctx.save();
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.45)';
+            ctx.beginPath();
+            ctx.ellipse(cx, cy + 2, 11, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#111827'; // body
+            ctx.fillRect(cx - 9, cy - 9, 18, 10);
+            ctx.fillStyle = '#374151'; // grip + top plate
+            ctx.fillRect(cx - 9, cy - 9, 4, 10);
+            ctx.fillRect(cx - 4, cy - 12, 8, 3);
+            ctx.fillStyle = '#e2e8f0'; // speedlight
+            ctx.fillRect(cx - 3, cy - 17, 6, 5);
+            ctx.fillStyle = '#0f172a'; // lens
+            ctx.beginPath();
+            ctx.arc(cx + 3, cy - 4, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(cx + 2, cy - 6, 2, 2);
+            // Empty card door (open, card is in the laptop) + blinking LED while copying
+            ctx.fillStyle = '#f97316';
+            ctx.fillRect(cx + 7, cy - 8, 2, 4);
+            if (isTransferringNow && Math.floor(discoBeatPhase * 6) % 2 === 0) {
+              ctx.fillStyle = '#4ade80';
+              ctx.fillRect(cx - 7, cy - 7, 2, 2);
+            }
+            ctx.restore();
+          }
 
           // 3. Pixel-Art Mitsubishi White Thermal Photo Printer in the center of the table
           drawPixelThermalPrinter(
@@ -3485,6 +3644,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // Conditional Compact Badge above the Corner Table (only when active or player is nearby)
           const showStationBadge =
+            isTransferringNow ||
+            player.cameraOnDesk ||
             isPrintingNow ||
             isCuttingNow ||
             player.isNearStation ||
@@ -3504,34 +3665,46 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 : '#f59e0b';
             ctx.lineWidth = 1.3;
             ctx.beginPath();
-            ctx.roundRect(bx - 48, by - 13, 96, isPrintingNow || isCuttingNow ? 22 : 16, [5]);
+            ctx.roundRect(bx - 48, by - 13, 96, isTransferringNow || isPrintingNow || isCuttingNow ? 22 : 16, [5]);
             ctx.fill();
             ctx.stroke();
 
             ctx.fillStyle =
-              isPrintingNow
+              isTransferringNow
+                ? '#4ade80'
+                : isPrintingNow
                 ? '#38bdf8'
                 : isCuttingNow
                 ? '#fbbf24'
                 : '#fef08a';
             ctx.font = 'bold 7.5px "Heebo", sans-serif';
             ctx.textAlign = 'center';
-            const badgeTitle = isPrintingNow
+            const badgeTitle = isTransferringNow
+              ? `💾 → 💻 ${player.transferBatch} (${player.transferAnimTimer.toFixed(1)}s)`
+              : isPrintingNow
               ? `🖨️ ${pProg.currentSheet}/${player.printerTotalSheets} (${player.printerAnimTimer.toFixed(1)}s)`
               : isCuttingNow
               ? `✂️ ${cProg.currentSheet}/${player.cutterTotalSheets} (${player.cutterAnimTimer.toFixed(1)}s)`
               : player.uncutSheetsAtStation > 0
               ? `✂️ [E] חתוך (${player.uncutSheetsAtStation})`
+              : player.photosOnComputer > 0
+              ? `🖨️ [E] הדפס (${player.photosOnComputer})`
               : player.photosInCamera > 0
-              ? `🖨️ [E] פתח (${player.photosInCamera})`
+              ? `💾 [E] העבר למחשב (${player.photosInCamera})`
+              : player.cameraOnDesk
+              ? '📷 המצלמה על השולחן'
               : '🪑 עמדת מגנטים';
             ctx.fillText(badgeTitle, bx, by - 2);
 
-            if (isPrintingNow || isCuttingNow) {
-              const prog = isPrintingNow ? pProg.overallProgress : cProg.overallProgress;
+            if (isTransferringNow || isPrintingNow || isCuttingNow) {
+              const prog = isTransferringNow
+                ? transferProg
+                : isPrintingNow
+                ? pProg.overallProgress
+                : cProg.overallProgress;
               ctx.fillStyle = '#1e293b';
               ctx.fillRect(bx - 38, by + 3, 76, 3.5);
-              ctx.fillStyle = isPrintingNow ? '#38bdf8' : '#fbbf24';
+              ctx.fillStyle = isTransferringNow ? '#4ade80' : isPrintingNow ? '#38bdf8' : '#fbbf24';
               ctx.fillRect(bx - 38, by + 3, Math.round(76 * prog), 3.5);
             }
           }
@@ -3917,7 +4090,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.stroke();
         ctx.setLineDash([]);
       } else if (
-        (player.photosInCamera > 0 || player.uncutSheetsAtStation > 0) &&
+        (player.photosInCamera > 0 ||
+          player.photosOnComputer > 0 ||
+          player.uncutSheetsAtStation > 0 ||
+          player.cameraOnDesk) &&
         !player.isNearStation
       ) {
         const plIso = worldToIso(player.x, player.y, 12);
@@ -4063,12 +4239,19 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           let miniPillBg = '#f59e0b';
           const miniPillFg = '#020617';
           if (!isSeated) {
-            if (player.cutMagnetsInHand > 0) {
+            if (player.cameraOnDesk) {
+              // Reminder: no camera in hand — it's still on the workstation desk
+              miniPillText = '📷 ❗';
+              miniPillBg = '#f87171';
+            } else if (player.cutMagnetsInHand > 0) {
               miniPillText = `🧲 ${player.cutMagnetsInHand}`;
               miniPillBg = '#4ade80';
             } else if (player.uncutSheetsAtStation > 0) {
               miniPillText = `✂️ ${player.uncutSheetsAtStation}`;
               miniPillBg = '#22d3ee';
+            } else if (player.photosOnComputer > 0) {
+              miniPillText = `💻 ${player.photosOnComputer}`;
+              miniPillBg = '#a3e635';
             } else if (player.photosInCamera > 0) {
               miniPillText = `📸 ${player.photosInCamera}`;
               miniPillBg = '#f59e0b';
@@ -4543,6 +4726,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         const waveCfg = getWaveConfig(wave);
         const activeObjective = getActiveWorkflowObjective({
           photosInCamera: player.photosInCamera,
+          photosOnComputer: player.photosOnComputer + player.transferBatch,
           uncutSheetsAtStation: player.uncutSheetsAtStation,
           cutMagnetsInHand: player.cutMagnetsInHand,
           magnetsOnBoard: availableMagnetsOnBoard,
@@ -4570,6 +4754,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           trackTimeSec: Math.round(trackTimeRemaining),
           stageTitleHe: waveCfg.stageTitleHe,
           photosInCamera: player.photosInCamera,
+          photosOnComputer: player.photosOnComputer,
+          photosTransferring: player.transferBatch,
+          transferRemainingSec: player.transferAnimTimer,
+          cameraOnDesk: player.cameraOnDesk,
           maxPhotosInCamera: getMaxCameraCapacity(upgradeLevels.pro_sdcard),
           uncutSheetsAtStation: player.uncutSheetsAtStation,
           cutMagnetsInHand: player.cutMagnetsInHand,

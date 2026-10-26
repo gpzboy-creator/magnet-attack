@@ -8,6 +8,9 @@ import {
   ISO_ANIM_STATES,
 } from './spriteExtractor.ts';
 import {
+  calculateCardTransferTiming,
+  chooseWorkstationAction,
+  shouldPickUpCameraFromDesk,
   approachVelocity,
   computePhotographerPose,
   getCameraLensScreenOffset,
@@ -191,7 +194,7 @@ test('computeCombinedMovementVector accurately handles smartphone virtual joysti
 
 test('active workflow objective follows the camera -> develop -> cut -> board pipeline', () => {
   const base = { photosInCamera: 0, uncutSheetsAtStation: 0, cutMagnetsInHand: 0, magnetsOnBoard: 0 };
-  assert.equal(getActiveWorkflowObjective({ ...base, photosInCamera: 4 }), 'workstation_develop');
+  assert.equal(getActiveWorkflowObjective({ ...base, photosInCamera: 4 }), 'workstation_transfer');
   assert.equal(getActiveWorkflowObjective({ ...base, uncutSheetsAtStation: 4 }), 'workstation_cut');
   assert.equal(getActiveWorkflowObjective({ ...base, cutMagnetsInHand: 4 }), 'board_stick');
   assert.equal(getActiveWorkflowObjective({ ...base, magnetsOnBoard: 4 }), 'dancefloor');
@@ -578,4 +581,36 @@ test('photographer pose bobs while walking and breathes only when idle', () => {
   const idle = computePhotographerPose({ strideDist: 0, speedRatio: 0, idleTime: 1.3, lean: 0 });
   assert.equal(idle.bobY === 0 || Object.is(idle.bobY, -0), true);
   assert.notEqual(idle.breathScaleY, 1);
+});
+
+test('card transfer timing scales with photo count and turbo upgrade', () => {
+  const four = calculateCardTransferTiming(4);
+  const twelve = calculateCardTransferTiming(12);
+  assert.ok(twelve.totalDurationSec > four.totalDurationSec);
+  assert.ok(Math.abs(four.totalDurationSec - (0.6 + 4 * 0.12)) < 0.01);
+  assert.ok(calculateCardTransferTiming(12, 2).totalDurationSec < twelve.totalDurationSec);
+});
+
+test('camera is picked up from the desk only after the copy, off the chair, at the station', () => {
+  const base = { cameraOnDesk: true, transferRemainingSec: 0, isSeatedAtStation: false, isNearStation: true };
+  assert.equal(shouldPickUpCameraFromDesk(base), true);
+  assert.equal(shouldPickUpCameraFromDesk({ ...base, transferRemainingSec: 0.4 }), false);
+  assert.equal(shouldPickUpCameraFromDesk({ ...base, isSeatedAtStation: true }), false);
+  assert.equal(shouldPickUpCameraFromDesk({ ...base, isNearStation: false }), false);
+  assert.equal(shouldPickUpCameraFromDesk({ ...base, cameraOnDesk: false }), false);
+});
+
+test('workstation [E] picks cut > print > transfer, and reports a running copy', () => {
+  const idle = { isTransferring: false, uncutSheetsAtStation: 0, photosOnComputer: 0, photosInCamera: 0 };
+  assert.equal(chooseWorkstationAction(idle), 'none');
+  assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 5 }), 'transfer');
+  assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 5, photosOnComputer: 3 }), 'print');
+  assert.equal(chooseWorkstationAction({ ...idle, photosOnComputer: 3, uncutSheetsAtStation: 2 }), 'cut');
+  assert.equal(chooseWorkstationAction({ ...idle, isTransferring: true, photosOnComputer: 3 }), 'busy_transfer');
+});
+
+test('workflow objective routes camera photos to the transfer step first', () => {
+  const base = { photosInCamera: 0, photosOnComputer: 0, uncutSheetsAtStation: 0, cutMagnetsInHand: 0, magnetsOnBoard: 0 };
+  assert.equal(getActiveWorkflowObjective({ ...base, photosInCamera: 4 }), 'workstation_transfer');
+  assert.equal(getActiveWorkflowObjective({ ...base, photosInCamera: 4, photosOnComputer: 4 }), 'workstation_develop');
 });
