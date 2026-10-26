@@ -1,0 +1,247 @@
+/* ==========================================================================
+   MICRO-HUD — corner-anchored, auto-fading, em-scaled
+   --------------------------------------------------------------------------
+   • Root font-size = 11px × --hud-scale (set from JS via computeHudScale);
+     every dimension below is in em, so the whole HUD scales as one unit.
+   • Clusters live in the 4 corners + a thin top/bottom center strip. The central
+     area (10%–90% of each axis) is kept free of persistent elements.
+   • Each cluster's opacity is driven inline (computeFadeOpacity); [data-reveal]
+     (hold Tab / Alt, or tap the vitals on touch) forces everything to full.
+   ========================================================================== */
+
+.mhud {
+  --hud-scale: 1;
+  --edge: max(0.55em, env(safe-area-inset-top, 0px));
+  --ink: #fef3c7;
+  --ink-dim: rgba(254, 243, 199, 0.62);
+  --plate: rgba(12, 9, 16, 0.42);
+  --plate-strong: rgba(12, 9, 16, 0.72);
+  --amber: #fbbf24;
+  --emerald: #34d399;
+  --sky: #38bdf8;
+  --rose: #fb7185;
+  --lime: #a3e635;
+  --cyan: #22d3ee;
+
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  user-select: none;
+  font-size: calc(11px * var(--hud-scale));
+  font-family: 'Heebo', system-ui, sans-serif;
+  color: var(--ink);
+  /* Crisp text on any background without heavy panels */
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.55);
+}
+
+.mhud .num {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* ---- Anchors ------------------------------------------------------------ */
+.mhud-tl,
+.mhud-tr,
+.mhud-bl,
+.mhud-br,
+.mhud-top,
+.mhud-bottom {
+  position: absolute;
+  display: flex;
+  gap: 0.35em;
+  transition: opacity 220ms ease-out;
+}
+.mhud-tl { top: calc(var(--edge) + env(safe-area-inset-top, 0px)); left: calc(var(--edge) + env(safe-area-inset-left, 0px)); flex-direction: column; align-items: flex-start; max-width: 28vw; }
+.mhud-tr { top: calc(var(--edge) + env(safe-area-inset-top, 0px)); right: calc(var(--edge) + env(safe-area-inset-right, 0px)); flex-direction: column; align-items: flex-end; max-width: 34vw; }
+.mhud-bl { bottom: calc(var(--edge) + env(safe-area-inset-bottom, 0px)); left: calc(var(--edge) + env(safe-area-inset-left, 0px)); align-items: flex-end; max-width: 30vw; flex-wrap: wrap; }
+.mhud-br { bottom: calc(var(--edge) + env(safe-area-inset-bottom, 0px)); right: calc(var(--edge) + env(safe-area-inset-right, 0px)); align-items: flex-end; justify-content: flex-end; max-width: 30vw; flex-wrap: wrap; }
+.mhud-top { top: calc(var(--edge) + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); max-width: 40vw; justify-content: center; }
+.mhud-bottom { bottom: calc(var(--edge) + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); max-width: 40vw; flex-direction: column; align-items: center; }
+
+/* ---- Primitives ---------------------------------------------------------- */
+.mhud-row { display: flex; align-items: center; gap: 0.4em; }
+
+/* Flat, semi-transparent pill — no border, no drop shadow */
+.mhud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.18em 0.5em;
+  border-radius: 999px;
+  background: var(--plate);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+/* Thin micro-bar (joy, crowd, dash, quota) */
+.mhud-bar {
+  position: relative;
+  width: 10.5em;
+  height: 0.32em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.mhud-bar > i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; display: block; transition: width 160ms linear; }
+.mhud-bar.thin { height: 0.2em; }
+.mhud-bar.hair { height: 0.14em; }
+.mhud-bar.segmented { display: flex; }
+.mhud-bar.segmented > i { position: static; height: 100%; border-radius: 0; }
+
+/* Ghost icon button (system + loadout) */
+.mhud-icon {
+  pointer-events: auto;
+  width: 2em;
+  height: 2em;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 0.55em;
+  border: 0;
+  background: var(--plate);
+  color: var(--ink);
+  font-size: 1em;
+  cursor: pointer;
+  position: relative;
+  transition: background 120ms, transform 120ms;
+}
+.mhud-icon:hover, .mhud-icon:focus-visible { background: var(--plate-strong); outline: none; }
+.mhud-icon:active { transform: scale(0.94); }
+.mhud-icon.is-on { box-shadow: inset 0 0 0 0.12em var(--amber); }
+.mhud-icon svg { width: 1.05em; height: 1.05em; }
+
+/* Numeric badge on an icon */
+.mhud-badge {
+  position: absolute;
+  top: -0.35em;
+  right: -0.35em;
+  min-width: 1.15em;
+  height: 1.15em;
+  padding: 0 0.25em;
+  border-radius: 999px;
+  background: var(--emerald);
+  color: #022c22;
+  font-size: 0.72em;
+  line-height: 1.15em;
+  text-align: center;
+  text-shadow: none;
+}
+
+/* Key cap for prompts ("E", "C") */
+.mhud-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.45em;
+  height: 1.45em;
+  padding: 0 0.3em;
+  border-radius: 0.3em;
+  background: var(--ink);
+  color: #1c1410;
+  font-size: 0.82em;
+  font-weight: 900;
+  text-shadow: none;
+}
+
+/* Labels only appear in reveal mode (or regular layout where there's room) */
+.mhud-label { color: var(--ink-dim); font-size: 0.82em; }
+.mhud:not([data-reveal]) .mhud-label.reveal-only { display: none; }
+
+/* ---- States -------------------------------------------------------------- */
+.mhud .warn { color: var(--rose); }
+.mhud .pulse { animation: mhud-pulse 1s ease-in-out infinite; }
+@keyframes mhud-pulse { 50% { opacity: 0.45; } }
+.mhud .pop { animation: mhud-pop 320ms ease-out; }
+@keyframes mhud-pop { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+/* Reveal mode: everything fully visible + labels */
+.mhud[data-reveal] .mhud-tl,
+.mhud[data-reveal] .mhud-tr,
+.mhud[data-reveal] .mhud-bl,
+.mhud[data-reveal] .mhud-br { opacity: 1 !important; }
+
+/* Hover wakes a cluster (desktop) */
+@media (hover: hover) {
+  .mhud-tr:hover, .mhud-br:hover, .mhud-bl:hover { opacity: 1 !important; }
+}
+
+/* ---- Prompt + toast strip (bottom center) -------------------------------- */
+.mhud-prompt {
+  pointer-events: auto;
+  border: 0;
+  cursor: pointer;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+}
+.mhud-toast {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.92em;
+  font-weight: 700;
+}
+.mhud-toast.critical { background: rgba(190, 18, 60, 0.82); color: #fff; }
+
+/* ---- Popovers (settings, upgrades) ---------------------------------------- */
+.mhud-pop {
+  pointer-events: auto;
+  position: absolute;
+  min-width: 15em;
+  padding: 0.5em;
+  border-radius: 0.7em;
+  background: rgba(12, 9, 16, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  font-size: 1em;
+  text-shadow: none;
+  z-index: 5;
+}
+.mhud-pop button {
+  pointer-events: auto;
+  font: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.06);
+  border: 0;
+  border-radius: 0.45em;
+  padding: 0.35em 0.55em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6em;
+  cursor: pointer;
+}
+.mhud-pop button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.13); }
+.mhud-pop button:disabled { opacity: 0.45; cursor: not-allowed; }
+.mhud-pop .row-static { display: flex; justify-content: space-between; align-items: center; padding: 0.2em 0.55em; }
+
+/* ---- Compact layout (phones) -------------------------------------------- */
+.mhud[data-layout='compact'] .mhud-tl { max-width: 42vw; }
+.mhud[data-layout='compact'] .mhud-tr { max-width: 44vw; }
+.mhud[data-layout='compact'] .mhud-bar { width: 8.5em; }
+.mhud[data-layout='compact'] .mhud-top { max-width: 56vw; top: auto; bottom: calc(var(--edge) + env(safe-area-inset-bottom, 0px) + 2.4em); }
+.mhud[data-layout='compact'] .mhud-bottom { max-width: 60vw; }
+/* With on-screen touch controls in the bottom corners, the bottom clusters move into the top
+   corners (done in JSX) and the event/toast strip sits just under the top corner rows */
+.mhud[data-touch] .mhud-top {
+  top: calc(var(--edge) + env(safe-area-inset-top, 0px) + 4.4em);
+  bottom: auto;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Landscape phones have room between the top corners → keep the strip on the top edge */
+@media (orientation: landscape) {
+  .mhud[data-touch] .mhud-top {
+    top: calc(var(--edge) + env(safe-area-inset-top, 0px));
+    max-width: 34vw;
+  }
+  .mhud[data-touch] .mhud-tl { max-width: 30vw; }
+  .mhud[data-touch] .mhud-tr { max-width: 32vw; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mhud .pulse, .mhud .pop { animation: none; }
+}

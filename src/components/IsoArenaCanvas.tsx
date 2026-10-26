@@ -2212,7 +2212,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             sound.playDanceBump();
             if (!player.stationFeedbackText) {
               player.stationFeedbackText =
-                'התיישבת על כסא עמדת המגנטים! 🪑 לחץ [E] לפיתוח וחיתוך · זוז כדי לקום מהכסא';
+                'התיישבת בעמדה 🪑 [E] העברה · הדפסה · חיתוך · זוז כדי לקום';
               player.stationFeedbackTimer = 2.6;
             }
           } else if (chairStep.justStoodUp) {
