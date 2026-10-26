@@ -54,6 +54,7 @@ import {
   updateWorkstationChairState,
   worldToIso,
 } from '../game/rules';
+import { FlashEngine, FlashProjector } from '../game/flashEngine';
 import {
   drawPixelGuillotineCutter,
   drawPixelLaptop,
@@ -153,6 +154,8 @@ export interface WeddingGuestActor {
   recruitProgressTimer?: number;
   arrivalDelayTimer?: number;
   isEnteringFloor?: boolean;
+  // Seconds left of the "caught in the camera flash" reaction (white blow-out + eye blink)
+  flashTintTimer?: number;
   // Seconds before this guest may switch between seated <-> dancing again (prevents flip-flopping)
   activityCooldown?: number;
 }
@@ -600,6 +603,23 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     );
     let projectileCursor = 0;
 
+    // ======================================================================
+    // CAMERA FLASH ENGINE — pooled light cones + lens flares with hit-test hooks
+    // ======================================================================
+    const flashEngine = new FlashEngine<WeddingGuestActor>({
+      poolSize: 24,
+      defaultTargetRadius: 10, // guest body radius in world units
+      // HOOK: shutter / flash sound fires exactly when the light is emitted
+      onFire: () => {
+        sound.playShoot();
+      },
+      // HOOK: guests caught inside the light cone react (white blow-out + eye blink).
+      // Photo capture/scoring is still driven by the flash projectiles, so gameplay balance is unchanged.
+      onTargetHit: (guest) => {
+        guest.flashTintTimer = 0.22;
+      },
+    });
+
     const fireFlashShot = (
       x: number,
       y: number,
@@ -745,6 +765,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       idleTime: 0,
       wasMoving: false,
       lean: 0,
+      // Screen-space offset of the camera lens from the feet, refreshed by the renderer each frame
+      lensOffsetX: 0,
+      lensOffsetY: -70,
       strideDist: 0,
       direction: 'NE' as IsoDirection,
       animState: 'idle' as IsoAnimState,
@@ -1383,6 +1406,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       for (const p of particles) p.active = false;
       for (const pr of projectiles) pr.active = false;
+      flashEngine.clear();
       for (const m of flyingMagnets) m.active = false;
       for (const th of flyingThumbs) th.active = false;
 
@@ -1714,9 +1738,13 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       ctx.arc(headX + 4.8, headY + 1.5, 2, 0, Math.PI * 2);
       ctx.fill();
 
-      // Eyes (with camera wink when celebrating!)
+      // Eyes (with camera wink when celebrating, squeezed shut when blinded by a flash)
       ctx.fillStyle = '#1c1410';
-      if (isCelebrating) {
+      const isFlashBlinded = (guest.flashTintTimer ?? 0) > 0;
+      if (isFlashBlinded) {
+        ctx.fillRect(headX - 4.4, headY - 1, 3, 1.2);
+        ctx.fillRect(headX + 1.6, headY - 1, 3, 1.2);
+      } else if (isCelebrating) {
         // Happy squinting/winking eyes ^ ^
         ctx.strokeStyle = '#1c1410';
         ctx.lineWidth = 1.5;
@@ -1799,6 +1827,22 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.font = '9px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(isVipTarget ? '⭐' : '📸', headX, badgeY + 3);
+      }
+
+      // CAUGHT IN THE FLASH: additive white blow-out over the body that fades with the timer
+      if (isFlashBlinded) {
+        const k = Math.min(1, (guest.flashTintTimer ?? 0) / 0.22);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const blow = ctx.createRadialGradient(headX, headY + 14, 2, headX, headY + 14, 34);
+        blow.addColorStop(0, `rgba(255, 255, 255, ${0.75 * k})`);
+        blow.addColorStop(0.6, `rgba(255, 250, 230, ${0.35 * k})`);
+        blow.addColorStop(1, 'rgba(255, 250, 230, 0)');
+        ctx.fillStyle = blow;
+        ctx.beginPath();
+        ctx.ellipse(headX, headY + 16, 18, 36, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
 
       // SOUVENIR WEDDING MAGNET: Held proudly with selected frame color!
@@ -2220,6 +2264,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           player.shootCooldown = Math.max(0, player.shootCooldown - simDt);
           player.shootAnimTimer = Math.max(0, player.shootAnimTimer - simDt);
+          flashEngine.update(simDt * 1000);
+          flashEngine.updateAnchor('player', player, {
+            x: player.lensOffsetX,
+            y: player.lensOffsetY,
+          });
           player.bumpFlashTimer = Math.max(0, player.bumpFlashTimer - simDt);
 
           if (wantsShoot && player.shootCooldown <= 0) {
@@ -2270,10 +2319,26 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 }
               }
 
+              // Light cone from the lens toward the aim direction (wide mode = wider, shorter cone)
+              const isWide = weaponRef.current !== 'pulse';
+              flashEngine.fire({
+                origin: { x: player.x, y: player.y },
+                angle: Math.atan2(dirWY, dirWX),
+                range: (isWide ? 150 : 185) * lensRangeBonus,
+                fov: isWide ? 72 : 48,
+                duration: 200,
+                peakMs: 50,
+                color: characterConfigRef.current.photographerStyle?.flashColor,
+                lensScreenOffset: { x: player.lensOffsetX, y: player.lensOffsetY },
+                layer: isBackFacingDirection(player.direction) ? 'behind' : 'front',
+                targets: guests,
+                tag: isWide ? 'wide' : 'pulse',
+                anchorKey: 'player',
+              });
+
               player.shootAnimTimer = 0.15;
               player.scaleX = 0.92;
               player.scaleY = 1.08;
-              sound.playShoot();
             }
           }
 
@@ -2420,6 +2485,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             guest.dancePhase += simDt * guest.danceTempo;
             guest.strideDist += simDt * 38;
             guest.hitFlashTimer = Math.max(0, guest.hitFlashTimer - simDt);
+            if ((guest.flashTintTimer ?? 0) > 0) {
+              guest.flashTintTimer = Math.max(0, (guest.flashTintTimer ?? 0) - simDt);
+            }
             guest.celebrateTimer = Math.max(0, guest.celebrateTimer - simDt);
             const dx = player.x - guest.x;
             const dy = player.y - guest.y;
@@ -3873,61 +3941,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.setLineDash([]);
       }
 
-      // Camera flash visual anchored at the lens.
-      // 'front' = burst + cone toward the viewer (drawn over the sprite);
-      // 'behind' = dim beam into the scene + rim halo (drawn under the sprite, which occludes the source).
-      const drawCameraFlash = (
-        lx: number,
-        ly: number,
-        ang: number,
-        intensity: number,
-        mode: 'front' | 'behind'
-      ) => {
-        ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
-        const flashHex = characterConfigRef.current.photographerStyle?.flashColor || '#facc15';
-        const hexNum = parseInt(flashHex.replace('#', '').padEnd(6, '0').slice(0, 6), 16);
-        const fr = (hexNum >> 16) & 255;
-        const fg = (hexNum >> 8) & 255;
-        const fb = hexNum & 255;
-        const coneLen = mode === 'front' ? 140 : 110;
-        const spread = mode === 'front' ? 0.42 : 0.26;
-        const peak = (mode === 'front' ? 0.62 : 0.32) * intensity;
-
-        const fGrad = ctx.createRadialGradient(lx, ly, 2, lx, ly, coneLen);
-        fGrad.addColorStop(0, `rgba(254, 249, 195, ${peak})`);
-        fGrad.addColorStop(0.45, `rgba(${fr}, ${fg}, ${fb}, ${peak * 0.4})`);
-        fGrad.addColorStop(1, `rgba(${fr}, ${fg}, ${fb}, 0)`);
-        ctx.fillStyle = fGrad;
-        ctx.beginPath();
-        ctx.moveTo(lx, ly);
-        ctx.lineTo(lx + Math.cos(ang - spread) * coneLen, ly + Math.sin(ang - spread) * coneLen * 0.6);
-        ctx.lineTo(lx + Math.cos(ang + spread) * coneLen, ly + Math.sin(ang + spread) * coneLen * 0.6);
-        ctx.closePath();
-        ctx.fill();
-
-        if (mode === 'front') {
-          // Soft bloom around the speedlight (the sprite frame already draws the star burst itself)
-          const r = 5 + intensity * 9;
-          const burst = ctx.createRadialGradient(lx, ly, 0, lx, ly, r * 2.2);
-          burst.addColorStop(0, `rgba(255, 255, 255, ${0.95 * intensity})`);
-          burst.addColorStop(0.35, `rgba(254, 249, 195, ${0.6 * intensity})`);
-          burst.addColorStop(1, 'rgba(254, 249, 195, 0)');
-          ctx.fillStyle = burst;
-          ctx.beginPath();
-          ctx.arc(lx, ly, r * 2.2, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          // Soft ambient halo spilling around the silhouette's edges
-          const halo = ctx.createRadialGradient(lx, ly, 4, lx, ly, 34);
-          halo.addColorStop(0, `rgba(254, 249, 195, ${0.45 * intensity})`);
-          halo.addColorStop(1, 'rgba(254, 249, 195, 0)');
-          ctx.fillStyle = halo;
-          ctx.beginPath();
-          ctx.arc(lx, ly, 34, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.restore();
+      // Screen projector handed to the flash engine (world x/y + height z → canvas pixels)
+      const projectToScreen: FlashProjector = (wx, wy, z) => {
+        const p = worldToIso(wx, wy, z);
+        return { x: originX + p.x, y: originY + p.y };
       };
 
       // Render Player (Photographer) - Standing or Seated on Workstation Chair
@@ -3962,7 +3979,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
         // Shoot frames in the sprite art show the camera + flash burst from the front.
         // Facing away, use the direction's normal frame instead; the flash is added procedurally
-        // BEHIND the body (see drawCameraFlash 'behind'), so nothing bright lands on the back of the head.
+        // BEHIND the body (FlashEngine 'behind' layer), so nothing bright lands on the back of the head.
         const isBackShot = st === 'shoot' && isBackFacingDirection(dir);
         const frame = findFrame(dir, isBackShot ? 'idle' : st) ?? findFrame(dir, st);
         const sheet = sheetCanvasRef.current;
@@ -3990,18 +4007,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           const dx = -frame.anchorX * dw;
           const dy = -frame.anchorY * dh;
 
-          // Camera lens position for the current facing, plus flash intensity (1 → 0 over the shot)
+          // Camera lens attachment point for the current facing (relative to the feet).
+          // Stored on the player so the flash engine anchors its apex exactly at the lens.
           const lens = getCameraLensScreenOffset(dir, dh);
-          const lensX = screenFootX + lens.dx;
-          const lensY = screenFootY + lens.dy + pose.bobY;
-          const flashT = Math.max(0, Math.min(1, player.shootAnimTimer / 0.15));
-          const isFlashing = st === 'shoot' && flashT > 0;
+          player.lensOffsetX = lens.dx + (screenFootX - (originX + worldToIso(worldX, worldY).x));
+          player.lensOffsetY = lens.dy + pose.bobY + (screenFootY - (originY + worldToIso(worldX, worldY).y));
 
-          // Back-facing: the flash fires INTO the scene, so draw it UNDER the sprite —
-          // a narrow beam away from the viewer + soft rim glow around the silhouette, no frontal burst.
-          if (isFlashing && !lens.lensInFront) {
-            drawCameraFlash(lensX, lensY, lens.angle, flashT, 'behind');
-          }
+          // Back-facing shots fire INTO the scene: drawn UNDER the sprite so the body occludes the source
+          flashEngine.render(ctx, projectToScreen, 'behind');
 
           // Draw the sprite around its foot anchor so tilt pivots at the feet
           ctx.save();
@@ -4022,9 +4035,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           ctx.restore();
 
           // Front/side-facing: the lens is between the body and the viewer → flash renders ON TOP
-          if (isFlashing && lens.lensInFront) {
-            drawCameraFlash(lensX, lensY, lens.angle, flashT, 'front');
-          }
+          flashEngine.render(ctx, projectToScreen, 'front');
 
           // Golden/Cyan circle under photographer's stance when standing
           if (!isSeated) {
