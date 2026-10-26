@@ -8,6 +8,11 @@ import {
   ISO_ANIM_STATES,
 } from './spriteExtractor.ts';
 import {
+  approachVelocity,
+  computePhotographerPose,
+  getCameraLensScreenOffset,
+  isBackFacingDirection,
+  stepScaleSpring,
   resolveFloorObstacles,
   stepCrowdJoy,
   CROWD_JOY_RATE_PER_SEC,
@@ -534,4 +539,43 @@ test('resolveFloorObstacles pushes a body out of circles and boxes and leaves fr
 
   const free = resolveFloorObstacles({ x: 300, y: 300 }, 9, obs);
   assert.deepEqual(free, { x: 300, y: 300 });
+});
+
+test('approachVelocity eases toward target and stops cleanly', () => {
+  let v = 0;
+  v = approachVelocity(v, 165, 1 / 60, 12, 9);
+  assert.ok(v > 0 && v < 165, `should ease in, got ${v}`);
+  for (let i = 0; i < 120; i++) v = approachVelocity(v, 165, 1 / 60, 12, 9);
+  assert.ok(Math.abs(v - 165) < 1);
+  for (let i = 0; i < 120; i++) v = approachVelocity(v, 0, 1 / 60, 12, 9);
+  assert.equal(v, 0);
+});
+
+test('stepScaleSpring settles a squash back to 1', () => {
+  let s = { scale: 0.9, velocity: 0 };
+  for (let i = 0; i < 120; i++) s = stepScaleSpring(s.scale, s.velocity, 1 / 60);
+  assert.ok(Math.abs(s.scale - 1) < 0.01);
+});
+
+test('back-facing directions put the lens behind the body; others in front', () => {
+  for (const d of ['N', 'NE', 'NW'] as const) {
+    assert.equal(isBackFacingDirection(d), true);
+    assert.equal(getCameraLensScreenOffset(d, 100).lensInFront, false);
+  }
+  for (const d of ['S', 'SE', 'SW', 'E', 'W'] as const) {
+    assert.equal(getCameraLensScreenOffset(d, 100).lensInFront, true);
+  }
+  // Lens sits at eye level and shifts toward the facing side
+  const east = getCameraLensScreenOffset('E', 100);
+  assert.ok(east.dx > 0 && east.dy < -80);
+  assert.ok(getCameraLensScreenOffset('W', 100).dx < 0);
+});
+
+test('photographer pose bobs while walking and breathes only when idle', () => {
+  const walking = computePhotographerPose({ strideDist: 11, speedRatio: 1, idleTime: 0, lean: 0 });
+  assert.ok(walking.bobY < -1);
+  assert.equal(walking.breathScaleY, 1);
+  const idle = computePhotographerPose({ strideDist: 0, speedRatio: 0, idleTime: 1.3, lean: 0 });
+  assert.equal(idle.bobY === 0 || Object.is(idle.bobY, -0), true);
+  assert.notEqual(idle.breathScaleY, 1);
 });

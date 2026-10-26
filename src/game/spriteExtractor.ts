@@ -1202,7 +1202,22 @@ export function generateDefaultIsoSpriteSheetRGBA(
         PAL.SKIN_MID
       );
 
-      if (!isFacingNorth || state === 'shoot' || dir === 'NE' || dir === 'NW') {
+      // Back to the viewer while shooting: the camera is raised to the face, so it is hidden
+      // behind the head — only the rear of the speedlight peeks over the hair (no lens, no glow).
+      const cameraHiddenBehindHead = isFacingNorth && state === 'shoot';
+      if (cameraHiddenBehindHead) {
+        fillOutlinedRect(
+          rgba,
+          sheetWidth,
+          sheetHeight,
+          camCenterX - 3,
+          headTopY - 4,
+          7,
+          5,
+          PAL.FLASH_UNIT
+        );
+        fillRect(rgba, sheetWidth, sheetHeight, camCenterX - 1, headTopY + 1, 3, 2, PAL.FLASH_BASE);
+      } else if (!isFacingNorth || dir === 'NE' || dir === 'NW') {
         fillOutlinedRect(
           rgba,
           sheetWidth,
@@ -1260,8 +1275,10 @@ export function generateDefaultIsoSpriteSheetRGBA(
         );
       }
 
-      // 5. FLASH BURST ON 'SHOOT' FRAMES
-      if (state === 'shoot') {
+      // 5. FLASH BURST ON 'SHOOT' FRAMES — only when the flash points toward/across the viewer.
+      // Facing away, the burst would be painted over the back of the head; the renderer adds
+      // a dim beam + rim glow behind the sprite instead.
+      if (state === 'shoot' && !isFacingNorth) {
         const burstX = cx + Math.round(cosA * 7);
         const burstY = headTopY - 6;
 
@@ -1444,7 +1461,7 @@ export function downloadSingleFramePNG(
 }
 
 export const DEFAULT_UPLOADED_SPRITE_SHEET_URL =
-  `${import.meta.env.BASE_URL}assets/aistudio/Gemini_Generated_Image_vtvrxkvtvrxkvtvr_9de06393.jpg`;
+  `${import.meta.env?.BASE_URL ?? '/'}assets/aistudio/Gemini_Generated_Image_vtvrxkvtvrxkvtvr_9de06393.jpg`;
 
 /**
  * Normalizes a loaded 4x8 sprite sheet image onto a clean 512x1024 canvas

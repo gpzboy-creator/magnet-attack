@@ -38,6 +38,14 @@ import {
   getWorkstationSheetProgress,
   getWorkstationSpeedMultiplier,
   isoToWorld,
+  PLAYER_ACCEL_RATE,
+  PLAYER_DASH_RATE,
+  PLAYER_DECEL_RATE,
+  approachVelocity,
+  computePhotographerPose,
+  getCameraLensScreenOffset,
+  isBackFacingDirection,
+  stepScaleSpring,
   pickNextSocialDanceSpot,
   resolveFloorObstacles,
   stepCrowdJoy,
@@ -732,6 +740,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       bumpFlashTimer: 0,
       scaleX: 1,
       scaleY: 1,
+      scaleVelX: 0,
+      scaleVelY: 0,
+      idleTime: 0,
+      wasMoving: false,
+      lean: 0,
       strideDist: 0,
       direction: 'NE' as IsoDirection,
       animState: 'idle' as IsoAnimState,
@@ -1323,6 +1336,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.bumpFlashTimer = 0;
       player.scaleX = 1;
       player.scaleY = 1;
+      player.scaleVelX = 0;
+      player.scaleVelY = 0;
+      player.idleTime = 0;
+      player.wasMoving = false;
+      player.lean = 0;
       player.strideDist = 0;
       player.direction = 'NE';
       player.animState = 'idle';
@@ -1855,8 +1873,13 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const dt = clampDt(rawDt);
 
       discoBeatPhase += dt * 2.8;
-      player.scaleX += (1 - player.scaleX) * Math.min(1, dt * 14);
-      player.scaleY += (1 - player.scaleY) * Math.min(1, dt * 14);
+      // Squash & stretch settles back to 1 on a damped spring (slight wobble = more life)
+      const springX = stepScaleSpring(player.scaleX, player.scaleVelX, dt);
+      const springY = stepScaleSpring(player.scaleY, player.scaleVelY, dt);
+      player.scaleX = springX.scale;
+      player.scaleVelX = springX.velocity;
+      player.scaleY = springY.scale;
+      player.scaleVelY = springY.velocity;
       cameraTrauma = Math.max(0, cameraTrauma - dt * 2.5);
 
       if (player.ghostJoy > player.partyJoy) {
@@ -2022,9 +2045,18 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.strideDist = 0;
             player.isNearStation = true;
           } else {
-            const moveSpeed = (player.dashActiveTimer > 0 ? 380 : 165) * sneakerBoost;
-            player.vx = normMoveX * moveSpeed;
-            player.vy = normMoveY * moveSpeed;
+            const isDashing = player.dashActiveTimer > 0;
+            const moveSpeed = (isDashing ? 380 : 165) * sneakerBoost;
+            const targetVx = normMoveX * moveSpeed;
+            const targetVy = normMoveY * moveSpeed;
+            // Smooth acceleration / deceleration instead of instant start & stop
+            const accelRate = isDashing ? PLAYER_DASH_RATE : PLAYER_ACCEL_RATE;
+            const decelRate = isDashing ? PLAYER_DASH_RATE : PLAYER_DECEL_RATE;
+            player.vx = approachVelocity(player.vx, targetVx, simDt, accelRate, decelRate);
+            player.vy = approachVelocity(player.vy, targetVy, simDt, accelRate, decelRate);
+
+            const prevX = player.x;
+            const prevY = player.y;
             player.x += player.vx * simDt;
             player.y += player.vy * simDt;
 
@@ -2037,6 +2069,29 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             const solved = resolveFloorObstacles(player, PLAYER_BODY_RADIUS, FLOOR_OBSTACLES);
             player.x = solved.x;
             player.y = solved.y;
+
+            // If a wall/obstacle stopped us, keep only the velocity we actually achieved (no "sticky" push)
+            if (simDt > 0) {
+              const realVx = (player.x - prevX) / simDt;
+              const realVy = (player.y - prevY) / simDt;
+              if (Math.abs(realVx) < Math.abs(player.vx)) player.vx = realVx;
+              if (Math.abs(realVy) < Math.abs(player.vy)) player.vy = realVy;
+            }
+
+            // Start / stop squash & stretch + lean into horizontal screen motion
+            const wantsToMove = Math.abs(normMoveX) + Math.abs(normMoveY) > 0.01;
+            const speedNow = Math.hypot(player.vx, player.vy);
+            if (wantsToMove && !player.wasMoving) {
+              player.scaleX = 0.93;
+              player.scaleY = 1.07;
+            } else if (!wantsToMove && player.wasMoving && speedNow > 60) {
+              player.scaleX = 1.1;
+              player.scaleY = 0.9;
+            }
+            player.wasMoving = wantsToMove;
+            const screenVx = player.vx - player.vy; // iso screen-x velocity
+            const targetLean = (screenVx / 330) * 0.08;
+            player.lean += (targetLean - player.lean) * Math.min(1, simDt * 10);
           }
 
           // Update VIP Event Countdown & Check if Photographer Missed the Active Event!
@@ -2222,9 +2277,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
+          const playerSpeed = Math.hypot(player.vx, player.vy);
+          player.idleTime = playerSpeed < 8 && !player.isSeatedAtStation ? player.idleTime + simDt : 0;
+
           if (player.shootAnimTimer > 0) {
             player.animState = 'shoot';
-          } else if (stepDist > 0.1) {
+          } else if (playerSpeed > 18) {
             const gaitPhase = Math.floor(player.strideDist / 22) % 2;
             player.animState = gaitPhase === 0 ? 'walk_1' : 'walk_2';
           } else {
@@ -3815,6 +3873,63 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.setLineDash([]);
       }
 
+      // Camera flash visual anchored at the lens.
+      // 'front' = burst + cone toward the viewer (drawn over the sprite);
+      // 'behind' = dim beam into the scene + rim halo (drawn under the sprite, which occludes the source).
+      const drawCameraFlash = (
+        lx: number,
+        ly: number,
+        ang: number,
+        intensity: number,
+        mode: 'front' | 'behind'
+      ) => {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const flashHex = characterConfigRef.current.photographerStyle?.flashColor || '#facc15';
+        const hexNum = parseInt(flashHex.replace('#', '').padEnd(6, '0').slice(0, 6), 16);
+        const fr = (hexNum >> 16) & 255;
+        const fg = (hexNum >> 8) & 255;
+        const fb = hexNum & 255;
+        const coneLen = mode === 'front' ? 140 : 110;
+        const spread = mode === 'front' ? 0.42 : 0.26;
+        const peak = (mode === 'front' ? 0.62 : 0.32) * intensity;
+
+        const fGrad = ctx.createRadialGradient(lx, ly, 2, lx, ly, coneLen);
+        fGrad.addColorStop(0, `rgba(254, 249, 195, ${peak})`);
+        fGrad.addColorStop(0.45, `rgba(${fr}, ${fg}, ${fb}, ${peak * 0.4})`);
+        fGrad.addColorStop(1, `rgba(${fr}, ${fg}, ${fb}, 0)`);
+        ctx.fillStyle = fGrad;
+        ctx.beginPath();
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx + Math.cos(ang - spread) * coneLen, ly + Math.sin(ang - spread) * coneLen * 0.6);
+        ctx.lineTo(lx + Math.cos(ang + spread) * coneLen, ly + Math.sin(ang + spread) * coneLen * 0.6);
+        ctx.closePath();
+        ctx.fill();
+
+        if (mode === 'front') {
+          // Soft bloom around the speedlight (the sprite frame already draws the star burst itself)
+          const r = 5 + intensity * 9;
+          const burst = ctx.createRadialGradient(lx, ly, 0, lx, ly, r * 2.2);
+          burst.addColorStop(0, `rgba(255, 255, 255, ${0.95 * intensity})`);
+          burst.addColorStop(0.35, `rgba(254, 249, 195, ${0.6 * intensity})`);
+          burst.addColorStop(1, 'rgba(254, 249, 195, 0)');
+          ctx.fillStyle = burst;
+          ctx.beginPath();
+          ctx.arc(lx, ly, r * 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Soft ambient halo spilling around the silhouette's edges
+          const halo = ctx.createRadialGradient(lx, ly, 4, lx, ly, 34);
+          halo.addColorStop(0, `rgba(254, 249, 195, ${0.45 * intensity})`);
+          halo.addColorStop(1, 'rgba(254, 249, 195, 0)');
+          ctx.fillStyle = halo;
+          ctx.beginPath();
+          ctx.arc(lx, ly, 34, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      };
+
       // Render Player (Photographer) - Standing or Seated on Workstation Chair
       const renderPhotographerWithFootAnchor = (
         worldX: number,
@@ -3845,49 +3960,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           ctx.strokeRect(screenFootX - 7, screenFootY - 12, 14, 10);
         }
 
-        // Real-Time Volumetric Camera Flash Cone when shooting (Section 1)
-        if (st === 'shoot' || player.shootAnimTimer > 0) {
-          const dirAngles: Record<IsoDirection, number> = {
-            E: 0,
-            SE: Math.PI * 0.25,
-            S: Math.PI * 0.5,
-            SW: Math.PI * 0.75,
-            W: Math.PI,
-            NW: -Math.PI * 0.75,
-            N: -Math.PI * 0.5,
-            NE: -Math.PI * 0.25,
-          };
-          const ang = dirAngles[dir] ?? 0;
-          const flashOriginY = screenFootY - 52;
-          const coneLen = 145;
-          const spread = 0.42;
-          const fGrad = ctx.createRadialGradient(
-            screenFootX,
-            flashOriginY,
-            4,
-            screenFootX + Math.cos(ang) * (coneLen * 0.6),
-            flashOriginY + Math.sin(ang) * (coneLen * 0.6),
-            coneLen
-          );
-          fGrad.addColorStop(0, 'rgba(254, 249, 195, 0.72)');
-          fGrad.addColorStop(0.5, 'rgba(253, 224, 71, 0.28)');
-          fGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
-          ctx.fillStyle = fGrad;
-          ctx.beginPath();
-          ctx.moveTo(screenFootX, flashOriginY);
-          ctx.lineTo(
-            screenFootX + Math.cos(ang - spread) * coneLen,
-            flashOriginY + Math.sin(ang - spread) * coneLen
-          );
-          ctx.lineTo(
-            screenFootX + Math.cos(ang + spread) * coneLen,
-            flashOriginY + Math.sin(ang + spread) * coneLen
-          );
-          ctx.closePath();
-          ctx.fill();
-        }
-
-        const frame = findFrame(dir, st);
+        // Shoot frames in the sprite art show the camera + flash burst from the front.
+        // Facing away, use the direction's normal frame instead; the flash is added procedurally
+        // BEHIND the body (see drawCameraFlash 'behind'), so nothing bright lands on the back of the head.
+        const isBackShot = st === 'shoot' && isBackFacingDirection(dir);
+        const frame = findFrame(dir, isBackShot ? 'idle' : st) ?? findFrame(dir, st);
         const sheet = sheetCanvasRef.current;
         if (frame && sheet) {
           const cfg = characterConfigRef.current;
@@ -3896,11 +3973,40 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           const hRatio = cfg.photographerHeightRatio || 1;
           const cellNorm = 128 / Math.max(64, atlasRef.current.spriteSheet.cellHeight || 128);
           const seatedSquashY = isSeated ? 0.86 : 1;
-          const dw = frame.width * cellNorm * scale * wRatio * sX;
-          const dh = frame.height * cellNorm * scale * hRatio * sY * seatedSquashY;
-          const dx = screenFootX - frame.anchorX * dw;
-          const dy = screenFootY - frame.anchorY * dh;
 
+          // Procedural walk bob / sway / lean + idle breathing (standing only)
+          const pose = isSeated
+            ? { bobY: 0, tilt: 0, breathScaleX: 1, breathScaleY: 1 }
+            : computePhotographerPose({
+                strideDist: player.strideDist,
+                speedRatio: Math.hypot(player.vx, player.vy) / 165,
+                idleTime: player.idleTime,
+                lean: player.lean,
+              });
+
+          const dw = frame.width * cellNorm * scale * wRatio * sX * pose.breathScaleX;
+          const dh =
+            frame.height * cellNorm * scale * hRatio * sY * seatedSquashY * pose.breathScaleY;
+          const dx = -frame.anchorX * dw;
+          const dy = -frame.anchorY * dh;
+
+          // Camera lens position for the current facing, plus flash intensity (1 → 0 over the shot)
+          const lens = getCameraLensScreenOffset(dir, dh);
+          const lensX = screenFootX + lens.dx;
+          const lensY = screenFootY + lens.dy + pose.bobY;
+          const flashT = Math.max(0, Math.min(1, player.shootAnimTimer / 0.15));
+          const isFlashing = st === 'shoot' && flashT > 0;
+
+          // Back-facing: the flash fires INTO the scene, so draw it UNDER the sprite —
+          // a narrow beam away from the viewer + soft rim glow around the silhouette, no frontal burst.
+          if (isFlashing && !lens.lensInFront) {
+            drawCameraFlash(lensX, lensY, lens.angle, flashT, 'behind');
+          }
+
+          // Draw the sprite around its foot anchor so tilt pivots at the feet
+          ctx.save();
+          ctx.translate(screenFootX, screenFootY + pose.bobY);
+          ctx.rotate(pose.tilt);
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(
             sheet,
@@ -3913,6 +4019,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             dw,
             dh
           );
+          ctx.restore();
+
+          // Front/side-facing: the lens is between the body and the viewer → flash renders ON TOP
+          if (isFlashing && lens.lensInFront) {
+            drawCameraFlash(lensX, lensY, lens.angle, flashT, 'front');
+          }
 
           // Golden/Cyan circle under photographer's stance when standing
           if (!isSeated) {
@@ -4100,6 +4212,42 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         }
       }
 
+      // Camera flash rays are depth-sorted with actors, so a shot fired "into" the scene
+      // (photographer facing away) passes BEHIND the photographer instead of over his head.
+      for (const pr of projectiles) {
+        if (!pr.active) continue;
+        const prGround = worldToIso(pr.x, pr.y);
+        drawables.push({
+          sortY: prGround.y,
+          draw: () => {
+            const pIso = worldToIso(pr.x, pr.y, 44); // lens height
+            const sx = originX + pIso.x;
+            const sy = originY + pIso.y;
+            const fade = Math.max(0, Math.min(1, pr.life / pr.maxLife));
+
+            ctx.save();
+            ctx.globalAlpha = 0.35 + fade * 0.65;
+            const glow = ctx.createRadialGradient(sx, sy, 1, sx, sy, 14);
+            glow.addColorStop(0, '#ffffff');
+            glow.addColorStop(0.5, pr.color);
+            glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 14, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = pr.color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          },
+        });
+      }
+
       // Depth sort all isometric actors
       drawables.sort((a, b) => a.sortY - b.sortY);
       for (const d of drawables) d.draw();
@@ -4190,31 +4338,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           vx,
           tagY + 0.5
         );
-      }
-
-      // Render Camera Flash Rays
-      for (const pr of projectiles) {
-        if (!pr.active) continue;
-        const pIso = worldToIso(pr.x, pr.y, 28);
-        const sx = originX + pIso.x;
-        const sy = originY + pIso.y;
-
-        const glow = ctx.createRadialGradient(sx, sy, 1, sx, sy, 14);
-        glow.addColorStop(0, '#ffffff');
-        glow.addColorStop(0.5, pr.color);
-        glow.addColorStop(1, 'rgba(253, 224, 71, 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 14, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = pr.color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
       }
 
       // ========================================================================

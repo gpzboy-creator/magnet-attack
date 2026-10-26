@@ -1170,3 +1170,114 @@ export function computePartyJoyTick(params: {
   };
 }
 
+
+// ============================================================================
+// PHOTOGRAPHER MOVEMENT JUICE & CAMERA-FACING HELPERS
+// ============================================================================
+
+/** Velocity response rates (1/sec) — higher = snappier. */
+export const PLAYER_ACCEL_RATE = 12;
+export const PLAYER_DECEL_RATE = 9;
+export const PLAYER_DASH_RATE = 40;
+
+/**
+ * Frame-rate independent exponential approach of one velocity component toward its target.
+ * Speeding up uses `accelRate`, slowing down / reversing uses `decelRate`.
+ */
+export function approachVelocity(
+  current: number,
+  target: number,
+  dt: number,
+  accelRate: number,
+  decelRate: number
+): number {
+  const speedingUp = Math.abs(target) > Math.abs(current) && Math.sign(target) === Math.sign(current || target);
+  const rate = speedingUp ? accelRate : decelRate;
+  const t = 1 - Math.exp(-rate * Math.max(0, dt));
+  const next = current + (target - current) * t;
+  // Snap tiny residual drift to zero so the idle pose kicks in cleanly
+  return Math.abs(next) < 0.5 && target === 0 ? 0 : next;
+}
+
+/**
+ * Damped spring step for squash & stretch scale (overshoots slightly, then settles at 1).
+ */
+export function stepScaleSpring(
+  scale: number,
+  velocity: number,
+  dt: number,
+  stiffness = 340,
+  damping = 15
+): { scale: number; velocity: number } {
+  const safeDt = Math.min(Math.max(0, dt), 1 / 30);
+  const accel = stiffness * (1 - scale) - damping * velocity;
+  const nextVel = velocity + accel * safeDt;
+  return { scale: scale + nextVel * safeDt, velocity: nextVel };
+}
+
+/** Directions where the photographer's back is to the viewer (camera points into the scene). */
+export function isBackFacingDirection(dir: IsoDirection): boolean {
+  return dir === 'N' || dir === 'NE' || dir === 'NW';
+}
+
+/** Screen-space angle each iso facing direction points at (0 = screen right, +PI/2 = screen down). */
+export const ISO_DIRECTION_SCREEN_ANGLE: Record<IsoDirection, number> = {
+  E: 0,
+  SE: Math.PI * 0.25,
+  S: Math.PI * 0.5,
+  SW: Math.PI * 0.75,
+  W: Math.PI,
+  NW: -Math.PI * 0.75,
+  N: -Math.PI * 0.5,
+  NE: -Math.PI * 0.25,
+};
+
+/**
+ * Where the camera lens sits relative to the sprite's foot anchor, in screen pixels,
+ * given the drawn sprite height. Also reports whether the lens is in front of the body
+ * (draw flash on top of the sprite) or behind it (draw flash under the sprite).
+ */
+export function getCameraLensScreenOffset(
+  dir: IsoDirection,
+  spriteHeight: number
+): { dx: number; dy: number; angle: number; lensInFront: boolean } {
+  const angle = ISO_DIRECTION_SCREEN_ANGLE[dir] ?? 0;
+  const reach = spriteHeight * 0.13;
+  return {
+    dx: Math.cos(angle) * reach,
+    // Speedlight sits on the camera raised to the face (~90% up the shoot frame);
+    // iso foreshortening halves the vertical reach
+    dy: -spriteHeight * 0.9 + Math.sin(angle) * reach * 0.5,
+    angle,
+    lensInFront: !isBackFacingDirection(dir),
+  };
+}
+
+/**
+ * Procedural pose offsets for the photographer sprite:
+ * walk bob + sway/tilt scaled by speed, and a gentle breathing cycle when idle.
+ */
+export function computePhotographerPose(params: {
+  strideDist: number;
+  speedRatio: number;
+  idleTime: number;
+  lean: number;
+}): { bobY: number; tilt: number; breathScaleX: number; breathScaleY: number } {
+  const speed = Math.max(0, Math.min(1.6, params.speedRatio));
+  const walkWeight = Math.min(1, speed);
+  // Two bounces per gait cycle (one per footstep); stride frames switch every 22 world units
+  const stepPhase = (params.strideDist / 22) * Math.PI;
+  const bobY = -Math.abs(Math.sin(stepPhase)) * 3.2 * walkWeight;
+  const sway = Math.sin(stepPhase) * 0.045 * walkWeight;
+  const tilt = sway + Math.max(-0.12, Math.min(0.12, params.lean));
+
+  // Breathing fades in after the photographer has stood still for a moment
+  const breathWeight = speed < 0.05 ? Math.min(1, params.idleTime / 0.6) : 0;
+  const breath = Math.sin(params.idleTime * 2.4) * breathWeight;
+  return {
+    bobY,
+    tilt,
+    breathScaleX: 1 - breath * 0.012,
+    breathScaleY: 1 + breath * 0.022,
+  };
+}
