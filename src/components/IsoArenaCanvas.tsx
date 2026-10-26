@@ -49,6 +49,7 @@ import {
   getCameraLensScreenOffset,
   isBackFacingDirection,
   stepScaleSpring,
+  getCuttingAnimFrame,
   pickNextSocialDanceSpot,
   resolveFloorObstacles,
   stepCrowdJoy,
@@ -60,9 +61,10 @@ import {
 import { FlashEngine, FlashProjector } from '../game/flashEngine';
 import {
   SEATED_FRAME,
-  SeatedSpriteSheet,
+  SpriteStrip,
+  loadCuttingPhotographerSheet,
   loadSeatedPhotographerSheet,
-} from '../game/seatedSprite';
+} from '../game/photographerStrips';
 import {
   drawPixelGuillotineCutter,
   drawPixelLaptop,
@@ -274,6 +276,9 @@ const BOARD_INTERACTION_RADIUS = 85;
 const WORKSTATION_POS = { x: 350, y: 35 };
 const WORKSTATION_CHAIR_POS = { x: WORKSTATION_POS.x - 8, y: WORKSTATION_POS.y + 34 };
 const STATION_INTERACTION_RADIUS = 95;
+// Where the photographer stands to operate the guillotine cutter (in front of the desk's right end,
+// facing up-right toward the cutter at WORKSTATION_POS + (28, 8))
+const CUTTER_STAND_POS = { x: WORKSTATION_POS.x + 28, y: WORKSTATION_POS.y + 38 };
 
 // Solid floor objects the photographer can't walk through (world coords, matching the drawn footprints)
 const PLAYER_BODY_RADIUS = 9;
@@ -612,10 +617,15 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let projectileCursor = 0;
 
     // Seated photographer strip (typing at the workstation, no camera in hand)
-    let seatedSheet: SeatedSpriteSheet | null = null;
+    let seatedSheet: SpriteStrip | null = null;
     let seatedSheetDisposed = false;
     loadSeatedPhotographerSheet().then((sheetResult) => {
       if (!seatedSheetDisposed) seatedSheet = sheetResult;
+    });
+    // Standing-at-the-cutter strip (pulling the guillotine lever)
+    let cuttingSheet: SpriteStrip | null = null;
+    loadCuttingPhotographerSheet().then((sheetResult) => {
+      if (!seatedSheetDisposed) cuttingSheet = sheetResult;
     });
 
     // ======================================================================
@@ -785,6 +795,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       lensOffsetY: -70,
       // Seconds seated at the workstation with no job running (drives the "glance at the party" frame)
       seatedIdleTime: 0,
+      // Standing at the guillotine cutter (cutting animation); cleared as soon as he moves
+      atCutter: false,
       strideDist: 0,
       direction: 'NE' as IsoDirection,
       animState: 'idle' as IsoAnimState,
@@ -1010,13 +1022,27 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       bestScore = Math.max(bestScore, score);
       sound.playComboChime(combo + 1);
 
+      // Get up from the chair and step over to the cutter (only when actually at the workstation)
+      if (player.isNearStation) {
+        player.isSeatedAtStation = false;
+        player.atCutter = true;
+        player.x = CUTTER_STAND_POS.x;
+        player.y = CUTTER_STAND_POS.y;
+        player.vx = 0;
+        player.vy = 0;
+        player.direction = 'NE';
+        player.wasNearStation = true;
+        player.standUpCooldown = Math.max(player.standUpCooldown, 0.5);
+      }
+
       const sheetIntervalMs = Math.max(120, Math.round(job.secondsPerSheet * 1000));
       for (let s = 0; s < job.sheetCount; s++) {
+        // Chop sound lands when the blade slices (≈42% into each sheet), matching the full-cut pose
         scheduleTimeout(() => {
           sound.playMagnetCutter();
           spawnPaperScraps(WORKSTATION_POS.x + 18, WORKSTATION_POS.y + 4, 18);
           spawnParticles(WORKSTATION_POS.x + 18, WORKSTATION_POS.y + 4, 14, '#22d3ee', 120, 40);
-        }, s * sheetIntervalMs);
+        }, Math.round((s + 0.42) * sheetIntervalMs));
       }
 
       player.stationFeedbackText = `✂️ טראח! נחתכו ${batch} מגנטים (${job.sheetCount} דפים · ${job.totalDurationSec.toFixed(1)} שנ')! רוץ ללוח המגנטים והדבק [E]! 🧲`;
@@ -1460,6 +1486,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.photosInCamera = 0;
       player.photosOnComputer = 0;
       player.cameraOnDesk = false;
+      player.atCutter = false;
       player.transferAnimTimer = 0;
       player.transferAnimDuration = 0;
       player.transferBatch = 0;
@@ -2145,6 +2172,16 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.dashActiveTimer = Math.max(0, player.dashActiveTimer - simDt);
           }
 
+          // Standing at the cutter: any movement input leaves it; otherwise don't let the chair grab him
+          if (player.atCutter) {
+            if (moveResult.isMoving || player.dashActiveTimer > 0) {
+              player.atCutter = false;
+            } else {
+              player.standUpCooldown = Math.max(player.standUpCooldown, 0.5);
+              player.wasNearStation = true;
+            }
+          }
+
           // Check Workstation Chair Sitting & Standing Up State Machine
           const chairStep = updateWorkstationChairState(
             {
@@ -2216,6 +2253,15 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             const solved = resolveFloorObstacles(player, PLAYER_BODY_RADIUS, FLOOR_OBSTACLES);
             player.x = solved.x;
             player.y = solved.y;
+
+            if (player.atCutter) {
+              // Planted at the cutter while working the lever
+              player.x = CUTTER_STAND_POS.x;
+              player.y = CUTTER_STAND_POS.y;
+              player.vx = 0;
+              player.vy = 0;
+              player.direction = 'NE';
+            }
 
             // If a wall/obstacle stopped us, keep only the velocity we actually achieved (no "sticky" push)
             if (simDt > 0) {
@@ -2394,12 +2440,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           if (
             wantsShoot &&
             player.shootCooldown <= 0 &&
-            (player.cameraOnDesk || player.isSeatedAtStation)
+            (player.cameraOnDesk || player.isSeatedAtStation || player.atCutter)
           ) {
             // No shooting from the chair (hands are on the laptop) or while the camera is on the desk
             player.shootCooldown = 0.6;
             sound.playDanceBump();
-            player.stationFeedbackText = !player.cameraOnDesk
+            player.stationFeedbackText = player.atCutter && !player.cameraOnDesk
+              ? '✂️ אתה עומד ליד החותך — זוז כדי לחזור לצלם'
+              : !player.cameraOnDesk
               ? '🪑 אתה יושב בעמדה ועובד על המחשב — קום מהכסא כדי לצלם'
               : player.transferAnimTimer > 0
                 ? `📷 המצלמה על השולחן — ההעברה למחשב עוד לא הסתיימה (${player.transferAnimTimer.toFixed(1)} שנ')`
@@ -4216,7 +4264,37 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           flashEngine.render(ctx, projectToScreen, 'behind');
 
           const seatedStrip = isSeated ? seatedSheet : null;
-          if (seatedStrip) {
+          const cuttingStrip = !isSeated && player.atCutter ? cuttingSheet : null;
+          if (cuttingStrip) {
+            // STANDING AT THE CUTTER: lever animation synced to the guillotine's per-sheet progress
+            const cutNow = player.cutterAnimTimer > 0;
+            const cutProg = getWorkstationSheetProgress(
+              player.cutterAnimTimer,
+              player.cutterAnimDuration,
+              player.cutterTotalSheets
+            );
+            const cf = cuttingStrip.frames[getCuttingAnimFrame(cutProg.sheetProgress, cutNow)];
+            // One scale for the whole strip (from the upright first frame) so bending poses get shorter
+            const ref = cuttingStrip.frames[0];
+            const standingH = frame.height * cellNorm * scale * hRatio;
+            const k = (standingH / ref.height) * sY;
+            const cw = cf.width * k * wRatio * sX;
+            const ch = cf.height * k;
+            ctx.save();
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(
+              cuttingStrip.canvas,
+              cf.x,
+              cf.y,
+              cf.width,
+              cf.height,
+              screenFootX - cf.anchorX * cw,
+              screenFootY - cf.anchorY * ch,
+              cw,
+              ch
+            );
+            ctx.restore();
+          } else if (seatedStrip) {
             // SEATED AT THE WORKSTATION: dedicated strip (no camera in hand).
             // Typing while a transfer/print/cut runs, idle otherwise, and after a few quiet
             // seconds he turns to glance at the party.

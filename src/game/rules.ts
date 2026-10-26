@@ -1353,3 +1353,23 @@ export function chooseWorkstationAction(state: {
   if (state.photosInCamera > 0) return 'transfer';
   return 'none';
 }
+
+// ============================================================================
+// GUILLOTINE CUTTING ANIMATION (photographer standing at the cutter)
+// ============================================================================
+
+/**
+ * Which cutting-strip frame (0..5) to show for the current sheet's progress (0..1).
+ * The full-cut pose (3) covers the window where the in-game blade chops down
+ * (cutter art: impact 0.32–0.56, slice at 0.42). After the last sheet → collect (5).
+ */
+export function getCuttingAnimFrame(sheetProgress: number, isCutting: boolean): number {
+  if (!isCutting) return 5; // collecting the cut magnets
+  const p = Math.max(0, Math.min(1, sheetProgress));
+  if (p < 0.12) return 0; // place the sheet
+  if (p < 0.26) return 1; // reach up for the lever
+  if (p < 0.34) return 2; // pull down
+  if (p < 0.6) return 3; // full cut
+  if (p < 0.84) return 4; // lever back up
+  return 0; // slide the next sheet in
+}

@@ -8,6 +8,7 @@ import {
   ISO_ANIM_STATES,
 } from './spriteExtractor.ts';
 import {
+  getCuttingAnimFrame,
   calculateCardTransferTiming,
   chooseWorkstationAction,
   shouldPickUpCameraFromDesk,
@@ -613,4 +614,14 @@ test('workflow objective routes camera photos to the transfer step first', () =>
   const base = { photosInCamera: 0, photosOnComputer: 0, uncutSheetsAtStation: 0, cutMagnetsInHand: 0, magnetsOnBoard: 0 };
   assert.equal(getActiveWorkflowObjective({ ...base, photosInCamera: 4 }), 'workstation_transfer');
   assert.equal(getActiveWorkflowObjective({ ...base, photosInCamera: 4, photosOnComputer: 4 }), 'workstation_develop');
+});
+
+test('cutting animation hits the full-cut pose when the blade slices', () => {
+  assert.equal(getCuttingAnimFrame(0.05, true), 0);
+  assert.equal(getCuttingAnimFrame(0.2, true), 1);
+  assert.equal(getCuttingAnimFrame(0.3, true), 2);
+  assert.equal(getCuttingAnimFrame(0.42, true), 3); // slice moment in the cutter art
+  assert.equal(getCuttingAnimFrame(0.7, true), 4);
+  assert.equal(getCuttingAnimFrame(0.95, true), 0);
+  assert.equal(getCuttingAnimFrame(0.5, false), 5);
 });

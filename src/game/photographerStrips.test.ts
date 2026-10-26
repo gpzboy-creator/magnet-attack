@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findStripFrames, isChromaGreen, keyOutGreenInPlace } from './seatedSprite.ts';
+import { computeFeetAnchorX, findStripFrames, isChromaGreen, keyOutGreenInPlace } from './photographerStrips.ts';
 
 test('chroma key removes green background and despills edges', () => {
   const px = new Uint8ClampedArray([
@@ -32,4 +32,18 @@ test('strip frames are found at uneven spacing', () => {
     { x: 40, y: 8, width: 22, height: 28 },
     { x: 90, y: 2, width: 25, height: 28 },
   ]);
+});
+
+test('feet anchor ignores arms stretched sideways', () => {
+  const w = 60;
+  const h = 50;
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  const fill = (x0: number, x1: number, y0: number, y1: number) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) rgba[(y * w + x) * 4 + 3] = 255;
+  };
+  fill(10, 20, 0, 50); // body + legs, x 10..19
+  fill(20, 50, 10, 14); // arm reaching far right
+  const ax = computeFeetAnchorX(rgba, w, { x: 10, y: 0, width: 40, height: 50 });
+  // feet centered at x=14.5 → (14.5 - 10) / 40
+  assert.ok(Math.abs(ax - 4.5 / 40) < 0.01, `got ${ax}`);
 });
