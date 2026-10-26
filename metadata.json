@@ -1,0 +1,6 @@
+{
+  "name": "IsoStrike: Atlas Protocol",
+  "description": "2D isometric tactical arena game and pixel-by-pixel sprite sheet bounding-box and foot-anchor extraction engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
