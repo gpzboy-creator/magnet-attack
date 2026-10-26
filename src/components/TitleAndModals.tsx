@@ -49,7 +49,7 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
                 viewBox="0 0 96 110"
                 className="w-16 h-20 sm:w-20 sm:h-24 shrink-0 drop-shadow-[0_3px_3px_rgba(0,0,0,0.95)]"
                 role="img"
-                aria-label="סמל מייסדים: מגנטים לחתונה"
+                aria-label="סמל Magnet Attack"
               >
                 <polygon
                   points="48,6 60,48 48,92 36,48"
@@ -95,24 +95,16 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
                 />
               </svg>
 
-              <div dir="rtl" className="flex flex-col text-right">
-                <h1
-                  className="text-2xl sm:text-5xl font-black text-white tracking-tight leading-none sm:whitespace-nowrap"
-                  style={{
-                    textShadow:
-                      '0 3px 0 #1c1410, 0 -2px 0 #1c1410, 3px 0 0 #1c1410, -3px 0 0 #1c1410, 0 6px 14px rgba(0,0,0,0.85)',
-                  }}
-                >
-                  מייסדים: מגנטים לחתונה
+              {/* Title lockup: Latin display title (LTR) + Hebrew subtitle (RTL) */}
+              <div className="ma-title-lockup flex flex-col items-start min-w-0">
+                <h1 dir="ltr" lang="en" className="ma-title" aria-label="Magnet Attack">
+                  <span className="ma-title-text" data-text="MAGNET ATTACK" aria-hidden="true">
+                    MAGNET ATTACK
+                  </span>
+                  <span className="ma-title-flash" aria-hidden="true" />
                 </h1>
-                <p
-                  className="text-lg sm:text-2xl font-bold text-amber-50 mt-1"
-                  style={{
-                    textShadow:
-                      '0 2px 0 #1c1410, 2px 0 0 #1c1410, -2px 0 0 #1c1410, 0 4px 8px rgba(0,0,0,0.85)',
-                  }}
-                >
-                  צילום חתונה מקצועי והדפסת מגנטים
+                <p dir="rtl" lang="he" className="ma-subtitle">
+                  צלם מגנטים
                 </p>
               </div>
             </div>

@@ -15,3 +15,107 @@
     padding: 0;
   }
 }
+
+/* ==========================================================================
+   TITLE SCREEN — "MAGNET ATTACK" lockup with camera-flash effects
+   ========================================================================== */
+.ma-title-lockup {
+  gap: clamp(0.25rem, 0.8vw, 0.6rem);
+}
+
+.ma-title {
+  position: relative;
+  margin: 0;
+  font-family: 'Bungee', 'Outfit', system-ui, sans-serif;
+  font-weight: 400; /* Bungee ships a single heavy weight */
+  font-size: clamp(1.55rem, 7vw, 4.6rem);
+  line-height: 0.95;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-align: left;
+  isolation: isolate;
+}
+
+/* Solid fill with a periodic white "flash sweep" running across the letters */
+.ma-title-text {
+  position: relative;
+  display: inline-block;
+  color: #fff7d6;
+  background: linear-gradient(
+      100deg,
+      transparent 0%,
+      transparent 38%,
+      rgba(255, 255, 255, 0.95) 48%,
+      transparent 58%,
+      transparent 100%
+    ),
+    linear-gradient(180deg, #ffffff 0%, #fef3c7 45%, #fbbf24 100%);
+  background-size: 250% 100%, 100% 100%;
+  background-position: 120% 0, 0 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  /* Chunky outline + drop shadow keep it readable over the busy venue */
+  filter: drop-shadow(0 3px 0 #1c1410) drop-shadow(3px 0 0 #1c1410)
+    drop-shadow(-3px 0 0 #1c1410) drop-shadow(0 -2px 0 #1c1410)
+    drop-shadow(0 8px 14px rgba(0, 0, 0, 0.75));
+  animation: ma-sweep 4.2s ease-in-out infinite, ma-pop 4.2s ease-out infinite;
+}
+
+/* Camera-flash burst: a bright star bloom that fires from the "A" in ATTACK */
+.ma-title-flash {
+  position: absolute;
+  top: -0.2em;
+  right: 0.35em;
+  width: 1.4em;
+  height: 1.4em;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(circle, #ffffff 0%, rgba(254, 249, 195, 0.9) 18%, rgba(253, 224, 71, 0.35) 42%, transparent 70%);
+  -webkit-mask: conic-gradient(from 0deg, #000 0 4%, transparent 4% 21%, #000 21% 29%, transparent 29% 46%, #000 46% 54%, transparent 54% 71%, #000 71% 79%, transparent 79% 96%, #000 96%),
+    radial-gradient(circle, #000 0 24%, transparent 25%);
+  mask: conic-gradient(from 0deg, #000 0 4%, transparent 4% 21%, #000 21% 29%, transparent 29% 46%, #000 46% 54%, transparent 54% 71%, #000 71% 79%, transparent 79% 96%, #000 96%),
+    radial-gradient(circle, #000 0 24%, transparent 25%);
+  opacity: 0;
+  transform: scale(0.2) rotate(0deg);
+  animation: ma-burst 4.2s ease-out infinite;
+}
+
+.ma-subtitle {
+  margin: 0;
+  font-family: 'Heebo', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.95rem, 2.6vw, 1.5rem);
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  color: #fef3c7;
+  text-align: left; /* aligns under the Latin title's start edge; text itself flows RTL */
+  unicode-bidi: isolate;
+  text-shadow: 0 2px 0 #1c1410, 2px 0 0 #1c1410, -2px 0 0 #1c1410, 0 4px 8px rgba(0, 0, 0, 0.85);
+}
+
+@keyframes ma-sweep {
+  0%, 55% { background-position: 120% 0, 0 0; }
+  80%, 100% { background-position: -40% 0, 0 0; }
+}
+
+/* Whole title "exposes" white for a split second, like a flash going off */
+@keyframes ma-pop {
+  0%, 52% { filter: drop-shadow(0 3px 0 #1c1410) drop-shadow(3px 0 0 #1c1410) drop-shadow(-3px 0 0 #1c1410) drop-shadow(0 -2px 0 #1c1410) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.75)); }
+  54% { filter: drop-shadow(0 3px 0 #1c1410) drop-shadow(3px 0 0 #1c1410) drop-shadow(-3px 0 0 #1c1410) drop-shadow(0 -2px 0 #1c1410) drop-shadow(0 0 22px rgba(255, 251, 220, 0.95)) brightness(1.35); }
+  64%, 100% { filter: drop-shadow(0 3px 0 #1c1410) drop-shadow(3px 0 0 #1c1410) drop-shadow(-3px 0 0 #1c1410) drop-shadow(0 -2px 0 #1c1410) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.75)); }
+}
+
+@keyframes ma-burst {
+  0%, 51% { opacity: 0; transform: scale(0.2) rotate(0deg); }
+  54% { opacity: 1; transform: scale(1.15) rotate(20deg); }
+  66% { opacity: 0; transform: scale(1.6) rotate(45deg); }
+  100% { opacity: 0; transform: scale(0.2) rotate(45deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ma-title-text,
+  .ma-title-flash {
+    animation: none;
+  }
+}
