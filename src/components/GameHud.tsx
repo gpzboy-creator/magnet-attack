@@ -27,6 +27,10 @@ export interface HudSnapshot {
   ghostHp: number;
   dashCharge: number;
   score: number;
+  /** Business reputation ("לידים") from photographing potential couples */
+  leads?: number;
+  /** Impatient guests currently nagging about their magnet */
+  naggingGuests?: number;
   bestScore: number;
   combo: number;
   wave: number;
@@ -234,7 +238,9 @@ export const GameHud: React.FC<GameHudProps> = ({
   const crowdChangedAt = useLastChange(crowd.dancerPct, 1);
   const progressChangedAt = Math.max(
     useLastChange(magnetsPrinted),
-    useLastChange(hud.score, 1)
+    useLastChange(hud.score, 1),
+    useLastChange(hud.leads ?? 0),
+    useLastChange(hud.naggingGuests ?? 0)
   );
   const pipelineChangedAt = useLastChange(pipelineCount);
   const loadoutChangedAt = Math.max(
@@ -522,6 +528,16 @@ export const GameHud: React.FC<GameHudProps> = ({
           <span className="mhud-pill" title="ניקוד">
             ⭐ <span className="num" data-testid="hud-score">{Math.round(hud.score)}</span>
           </span>
+          {(hud.leads ?? 0) > 0 && (
+            <span className="mhud-pill" title="לידים — מוניטין מזוגות פוטנציאליים">
+              💕 <span className="num" data-testid="hud-leads">{hud.leads}</span>
+            </span>
+          )}
+          {(hud.naggingGuests ?? 0) > 0 && (
+            <span className="mhud-pill warn pulse" title="אורחים מחכים למגנט שלהם">
+              ⏳ <span className="num">{hud.naggingGuests}</span>
+            </span>
+          )}
           <span className={`mhud-pill ${timerCritical ? 'warn pulse' : ''}`} title="זמן לשיר">
             ♫ <span className="num">{formattedTime}</span>
           </span>

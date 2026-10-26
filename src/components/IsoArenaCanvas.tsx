@@ -13,7 +13,6 @@ import {
   WaiterActorState,
   angleToIsoDirection,
   calculateBatchPrintBonus,
-  calculateKillScore,
   CROWD_MOVE_INTERVAL_SEC,
   FloorObstacle,
   GUEST_ACTIVITY_COOLDOWN_SEC,
@@ -58,7 +57,7 @@ import {
   updateWorkstationChairState,
   worldToIso,
 } from '../game/rules';
-import { FlashEngine, FlashProjector } from '../game/flashEngine';
+import { FlashEngine, FlashProjector, isTargetInCone } from '../game/flashEngine';
 import {
   SEATED_FRAME,
   SpriteStrip,
@@ -115,6 +114,28 @@ import {
   SpriteAtlasSchema,
 } from '../game/spriteExtractor';
 import { sound } from '../game/sound';
+import {
+  CAST_LOOKS,
+  CastLookId,
+  CastSheet,
+  GUEST_LOOKS_FEMALE,
+  GUEST_LOOKS_MALE,
+  EMBRACE_HEIGHT,
+  getCastFrame,
+  loadCastSheet,
+} from '../game/castSprites';
+import { DIALOGUE_HE, GuestType, PATIENCE, ATTENTION, PENALTIES, SCORE_REWARDS } from '../game/guestBalance';
+import {
+  GuestBehaviorState,
+  BehaviorEvent,
+  assignGuestTypes,
+  createBehavior,
+  onGuestPhotographed,
+  onMagnetDelivered,
+  stepBehavior,
+  wantsToApproachPhotographer,
+} from '../game/guestBehavior';
+import { FrameSubject, MagnetLedger, scoreCaptureExtras, scoreFrame } from '../game/photoScoring';
 import { HudSnapshot } from './GameHud';
 import type { VirtualInputState } from './MobileControls';
 
@@ -201,6 +222,17 @@ export interface WeddingGuestActor {
   isSmoker?: boolean;
   // Seconds before this guest may switch between seated <-> dancing again (prevents flip-flopping)
   activityCooldown?: number;
+  // Personality / role (guestBalance.ts) + behavior state machine (guestBehavior.ts)
+  guestType?: GuestType;
+  behavior?: GuestBehaviorState;
+  /** Potential couples share a coupleId (lowest member id). */
+  coupleId?: number | null;
+  /** Sprite look from the wedding cast sheet (bride & groom fixed; guests derived from outfit). */
+  castLook?: CastLookId;
+  /** Bride & groom: where the pair is heading right now. */
+  vipTargetX?: number;
+  vipTargetY?: number;
+  vipTimer?: number;
 }
 
 interface FlashShot {
@@ -676,6 +708,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     loadCuttingPhotographerSheet().then((sheetResult) => {
       if (!seatedSheetDisposed) cuttingSheet = sheetResult;
     });
+    // Wedding cast sheet: bride, groom and guest looks
+    let castSheet: CastSheet | null = null;
+    loadCastSheet().then((sheetResult) => {
+      if (!seatedSheetDisposed) castSheet = sheetResult;
+    });
 
     // ======================================================================
     // CAMERA FLASH ENGINE — pooled light cones + lens flares with hit-test hooks
@@ -899,6 +936,18 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let titlePanTime = 0;
     let nextGuestId = 1;
     let guests: WeddingGuestActor[] = [];
+    // The unique bride & groom (kept out of the crowd-ratio pool, but photographable like any guest)
+    let vipCouple: WeddingGuestActor[] = [];
+    // Who is in each photo on its way through camera → laptop → sheets → board (FIFO)
+    const magnetLedger = new MagnetLedger();
+    // Business reputation ("לידים") from photographing potential couples
+    let reputation = 0;
+    // Game clock for photo timestamps
+    let gameClock = 0;
+    let lastAimWX = 1;
+    let lastAimWY = 0;
+    // Big floating score labels for whole-frame scoring (Hebrew)
+    const frameLabels: Array<{ text: string; sub: string; x: number; y: number; life: number; color: string }> = [];
     // Waiters run drinks: pick up at the bar → walk to a guest → serve → back to the bar
     type DrinkWaiter = WaiterActorState & {
       mode: 'to_bar' | 'loading' | 'to_guest' | 'serving';
@@ -1107,6 +1156,66 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       hudEmitTimer = 1;
     };
 
+    // ======================================================================
+    // GUEST PERSONALITIES — apply behavior events (dialogue, penalties, rewards)
+    // ======================================================================
+    const addFrameLabel = (text: string, x: number, y: number, color: string, sub = '') => {
+      if (!text) return;
+      // Don't stack on top of a fresh label at the same spot
+      const crowded = frameLabels.filter((f) => Math.hypot(f.x - x, f.y - y) < 40 && f.life > 1.2).length;
+      frameLabels.push({ text, sub, x: x - crowded * 14, y: y - crowded * 14, life: 2.2, color });
+      if (frameLabels.length > 8) frameLabels.shift();
+    };
+
+    const applyScoreDelta = (delta: number) => {
+      score = Math.max(0, score + delta);
+      bestScore = Math.max(bestScore, score);
+    };
+
+    const applyBehaviorEvents = (guest: WeddingGuestActor, events: BehaviorEvent[]) => {
+      for (const ev of events) {
+        switch (ev.type) {
+          case 'say':
+            guest.speechBubbleText = ev.text;
+            guest.wantsPhotoTimer = 2.4;
+            break;
+          case 'start_seeking':
+            sound.playTelegraph();
+            break;
+          case 'patience_expired':
+            applyScoreDelta(-PENALTIES.patienceExpired);
+            player.partyJoy = Math.max(0, player.partyJoy - PENALTIES.patienceExpiredJoy);
+            addFrameLabel(`-${PENALTIES.patienceExpired}`, guest.x, guest.y, '#f87171', '⏳ האורח מחכה למגנט!');
+            player.stationFeedbackText = `⏳ אורח שצילמת מחכה למגנט שלו יותר מ-${PATIENCE.timeoutSec} שנ' — הוא בא לנדנד!`;
+            player.stationFeedbackTimer = 2.6;
+            break;
+          case 'nag_penalty':
+            applyScoreDelta(-PENALTIES.nagTick);
+            player.partyJoy = Math.max(0, player.partyJoy - PENALTIES.nagTickJoy);
+            addFrameLabel(`-${PENALTIES.nagTick}`, guest.x, guest.y, '#fca5a5');
+            break;
+          case 'gave_up':
+            applyScoreDelta(-PENALTIES.nagGaveUp);
+            player.partyJoy = Math.max(0, player.partyJoy - PENALTIES.nagGaveUpJoy);
+            addFrameLabel(`-${PENALTIES.nagGaveUp}`, guest.x, guest.y, '#f87171', '😒 ויתר על המגנט');
+            guest.guestActivity = 'seated';
+            guest.activityCooldown = 8;
+            break;
+          case 'delivered_on_time':
+            applyScoreDelta(SCORE_REWARDS.onTimeDelivery);
+            guest.celebrateTimer = 1.6;
+            addFrameLabel(`+${SCORE_REWARDS.onTimeDelivery}`, guest.x, guest.y, '#4ade80', '🧲 המגנט הגיע בזמן!');
+            spawnParticles(guest.x, guest.y, 14, '#4ade80', 110, 36);
+            break;
+          case 'delivered_late':
+            guest.celebrateTimer = 1.0;
+            break;
+          default:
+            break;
+        }
+      }
+    };
+
     // Step 3 at Tripod Board next to Dancefloor: Stick cut magnets onto the Tripod Whiteboard
     const stickMagnetsOnBoard = () => {
       if (player.cutMagnetsInHand <= 0) {
@@ -1148,6 +1257,17 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         } else {
           scheduleTimeout(launchMagnet, i * 75);
         }
+      }
+
+      // Match the delivered magnets back to the guests in those photos (oldest photos first)
+      const delivered = magnetLedger.deliver(batch);
+      for (const entry of delivered) {
+        if (entry.guestId == null) continue;
+        const owner = guests.find((g) => g.id === entry.guestId);
+        if (!owner?.behavior) continue;
+        const res = onMagnetDelivered(owner.behavior, Math.random);
+        owner.behavior = res.state;
+        if (res.events.length) applyBehaviorEvents(owner, res.events);
       }
 
       const deliveryEval = evaluateGuestJoyFromMagnetDelivery({
@@ -1345,15 +1465,21 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         };
       });
       barVisitTimer = 4;
+      magnetLedger.clear();
 
       // Same guests for the whole event – only reset magnet state for the new wave
       if (waveNum > 1 && guests.length > 0) {
         for (const g of guests) {
           g.hasMagnet = false;
           g.seekingMagnet = false;
+          // The production pipeline is emptied between stages, so pending magnet waits are cleared too
+          if (g.behavior?.kind === 'impatient') g.behavior = createBehavior('impatient_tracker', Math.random);
         }
         return;
       }
+
+      reputation = 0;
+      vipCouple = spawnVipCouple();
 
       guests = [];
       const outfits = characterConfigRef.current.guestOutfits;
@@ -1498,7 +1624,169 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           isSmoker: i % 4 === 1,
         });
       }
+
+      // Personalities: potential couples are whole dance pairs, then attention seekers & magnet trackers
+      const partnerPairs: Array<[number, number]> = [];
+      guests.forEach((g, idx) => {
+        if (g.partnerId != null && !g.isPartnerSecond) {
+          const j = guests.findIndex((o) => o.id === g.partnerId);
+          if (j >= 0) partnerPairs.push([idx, j]);
+        }
+      });
+      const types = assignGuestTypes({ count: guests.length, partnerPairs, rng: Math.random });
+      guests.forEach((g, idx) => {
+        g.guestType = types[idx];
+        g.behavior = createBehavior(types[idx], Math.random);
+        g.coupleId = null;
+      });
+      for (const [a, b] of partnerPairs) {
+        if (types[a] === 'potential_couple' && types[b] === 'potential_couple') {
+          const cid = Math.min(guests[a].id, guests[b].id);
+          guests[a].coupleId = cid;
+          guests[b].coupleId = cid;
+        }
+      }
     };
+
+    // ======================================================================
+    // THE BRIDE & GROOM — unique VIP actors (cast sheet sprites)
+    // ======================================================================
+    const COUPLE_CHUPPAH_SPOTS = [
+      { x: 128, y: -162 }, // bride
+      { x: 112, y: -175 }, // groom
+    ];
+    const COUPLE_ROAM_SPOTS = [
+      { x: 0, y: 2 }, // middle of the dance floor
+      { x: -40, y: -30 },
+      { x: 40, y: 34 },
+      { x: 30, y: -40 },
+    ];
+    let coupleRoamIdx = 0;
+    const isCoupleAtChuppah = () =>
+      vipCouple.length === 2 &&
+      vipEvent?.kind === 'chuppah_kiss' &&
+      vipCouple.every(
+        (m, i) => Math.hypot(m.x - COUPLE_CHUPPAH_SPOTS[i].x, m.y - COUPLE_CHUPPAH_SPOTS[i].y) < 8
+      );
+    function updateVipCouple(dt: number) {
+      const [bride, groom] = vipCouple;
+      if (!bride || !groom) return;
+      const chuppahMoment = Boolean(vipEvent && vipEvent.kind === 'chuppah_kiss' && vipEvent.remainingSec > 0);
+      bride.vipTimer = (bride.vipTimer ?? 0) - dt;
+      if (!chuppahMoment && bride.vipTimer <= 0) {
+        // Next stop: alternate dance-floor spots with visits to a banquet table or the bar
+        coupleRoamIdx++;
+        let tx: number;
+        let ty: number;
+        if (coupleRoamIdx % 3 === 1) {
+          const tbl = BANQUET_TABLES[Math.floor(Math.random() * BANQUET_TABLES.length)];
+          tx = tbl.wx + 30;
+          ty = tbl.wy + 26;
+        } else if (coupleRoamIdx % 6 === 5) {
+          const spot = BAR_GUEST_SPOTS[BAR_GUEST_SPOTS.length - 1];
+          tx = spot.x + 14;
+          ty = spot.y + 18;
+        } else {
+          const spot = COUPLE_ROAM_SPOTS[coupleRoamIdx % COUPLE_ROAM_SPOTS.length];
+          tx = spot.x;
+          ty = spot.y;
+        }
+        bride.vipTargetX = tx;
+        bride.vipTargetY = ty;
+        bride.vipTimer = 11 + Math.random() * 7;
+        if (Math.random() < 0.6) {
+          const lines = DIALOGUE_HE.brideGroomLines;
+          bride.speechBubbleText = lines[Math.floor(Math.random() * lines.length)];
+          bride.wantsPhotoTimer = 2;
+        }
+      }
+      vipCouple.forEach((m, i) => {
+        m.dancePhase += dt * m.danceTempo;
+        m.hitFlashTimer = Math.max(0, m.hitFlashTimer - dt);
+        m.celebrateTimer = Math.max(0, m.celebrateTimer - dt);
+        if ((m.flashTintTimer ?? 0) > 0) m.flashTintTimer = Math.max(0, (m.flashTintTimer ?? 0) - dt);
+        if (m.speechBubbleText) {
+          m.wantsPhotoTimer -= dt;
+          if (m.wantsPhotoTimer <= 0) m.speechBubbleText = null;
+        }
+        const target = chuppahMoment
+          ? COUPLE_CHUPPAH_SPOTS[i]
+          : { x: (bride.vipTargetX ?? 0) - i * 15, y: (bride.vipTargetY ?? 0) - i * 6 };
+        const mv = moveTowardPoint(m, target, 58, dt, 3);
+        const stepLen = Math.hypot(mv.x - m.x, mv.y - m.y);
+        if (stepLen > 0.01) {
+          const isoM = worldToIso(m.x, m.y);
+          const isoT = worldToIso(target.x, target.y);
+          m.direction = angleToIsoDirection(Math.atan2(isoT.y - isoM.y, isoT.x - isoM.x));
+          m.strideDist += stepLen * 1.5;
+          m.x = mv.x;
+          m.y = mv.y;
+        } else {
+          m.strideDist += dt * 38;
+          if (chuppahMoment) {
+            m.direction = 'S';
+            m.celebrateTimer = Math.max(m.celebrateTimer, 0.3);
+            if (i === 0 && !m.speechBubbleText) {
+              m.speechBubbleText = '💍 צלם אותנו בחופה!';
+              m.wantsPhotoTimer = 3;
+            }
+          } else {
+            // Dance with each other; turn to the camera when the photographer is close
+            const other = vipCouple[1 - i];
+            const near = Math.hypot(player.x - m.x, player.y - m.y) < 90;
+            const fx = near ? player.x : other.x;
+            const fy = near ? player.y : other.y;
+            const isoM = worldToIso(m.x, m.y);
+            const isoF = worldToIso(fx, fy);
+            m.direction = angleToIsoDirection(Math.atan2(isoF.y - isoM.y, isoF.x - isoM.x));
+          }
+        }
+      });
+    }
+
+    function spawnVipCouple(): WeddingGuestActor[] {
+      const make = (type: 'bride' | 'groom', id: number, x: number, y: number): WeddingGuestActor => {
+        const look = CAST_LOOKS[type];
+        return {
+          id,
+          role: 'dancer',
+          outfitIndex: 0,
+          archetype: 'charger',
+          x,
+          y,
+          homeX: x,
+          homeY: y,
+          vx: 0,
+          vy: 0,
+          speed: 50,
+          dancePhase: Math.random() * Math.PI * 2,
+          danceTempo: 3.2,
+          danceMove: 'bounce',
+          direction: 'S',
+          strideDist: 0,
+          outfitColor: look.palette.outfit,
+          hairColor: look.palette.hair,
+          isDress: look.palette.isDress,
+          hatType: type === 'bride' ? 'veil' : 'none',
+          hasMagnet: true,
+          photoCount: 0,
+          celebrateTimer: 0,
+          hitFlashTimer: 0,
+          wantsPhotoTimer: 0,
+          speechBubbleText: null,
+          poseTimer: 0,
+          isSeated: false,
+          guestActivity: 'dancing',
+          guestType: type,
+          behavior: { kind: 'none' },
+          castLook: type,
+          vipTargetX: COUPLE_ROAM_SPOTS[0].x,
+          vipTargetY: COUPLE_ROAM_SPOTS[0].y,
+          vipTimer: 10,
+        };
+      };
+      return [make('bride', 9001, 6, 4), make('groom', 9002, -8, 2)];
+    }
 
     const resetRun = () => {
       clearInputs();
@@ -1702,6 +1990,32 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         drawGhostChair(ctx, 0, 0, guest.direction !== 'NE' && guest.direction !== 'N' && guest.direction !== 'NW');
       }
 
+      const isFlashBlinded = (guest.flashTintTimer ?? 0) > 0;
+      let headX = grooveSway * 0.6;
+      let headY = -49 + bob + seatedYOffset;
+
+      // Standing guests, bride & groom: drawn from the wedding cast sprite sheet
+      const castHit =
+        !isSeated && guest.castLook && castSheet ? getCastFrame(castSheet, guest.castLook, guest.direction) : null;
+      if (castHit && castSheet) {
+        const look = CAST_LOOKS[guest.castLook as CastLookId];
+        const fr = castHit.frame;
+        const k = look.height / fr.height;
+        const dw = fr.width * k;
+        const dh = fr.height * k;
+        const walkBob = Math.abs(Math.sin(stride * 0.28 + guest.id)) * 1.6;
+        const lift = danceHop * 0.8 + walkBob;
+        const squash = 1 + Math.sin(stride * 0.28 + guest.id) * 0.018;
+        ctx.save();
+        ctx.rotate(grooveSway * 0.012);
+        ctx.translate(0, -lift);
+        ctx.scale(castHit.flip ? -1 : 1, squash);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(castSheet.canvas, fr.x, fr.y, fr.width, fr.height, -fr.anchorX * dw, -dh, dw, dh);
+        ctx.restore();
+        headX = grooveSway * 0.6;
+        headY = -look.height + 9 - lift;
+      } else {
       // Stepping Dance Shoes / Legs
       const leftStep = !isSeated ? Math.sin(stride * 0.32) * 2.5 : 0;
       const rightStep = !isSeated ? -Math.sin(stride * 0.32) * 2.5 : 0;
@@ -1861,8 +2175,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       ctx.lineCap = 'butt';
 
       // Head with warm skin tone & rosy cheeks
-      const headX = grooveSway * 0.6;
-      const headY = -49 + bob + seatedYOffset;
       ctx.fillStyle = '#eab696';
       ctx.strokeStyle = '#1c1410';
       ctx.lineWidth = 1.8;
@@ -1893,7 +2205,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       // Eyes (with camera wink when celebrating, squeezed shut when blinded by a flash)
       ctx.fillStyle = '#1c1410';
-      const isFlashBlinded = (guest.flashTintTimer ?? 0) > 0;
       if (isFlashBlinded) {
         ctx.fillRect(headX - 4.4, headY - 1, 3, 1.2);
         ctx.fillRect(headX + 1.6, headY - 1, 3, 1.2);
@@ -1965,6 +2276,39 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.lineTo(headX + 5, headY - 7);
         ctx.closePath();
         ctx.fill();
+      }
+
+      }
+
+      // Personality markers: potential-couple hearts, nagging magnet tracker, VIP crown ring
+      if (guest.guestType === 'potential_couple' && !isSeated) {
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.globalAlpha = alpha * (0.55 + 0.35 * Math.sin(stride * 0.2 + guest.id));
+        ctx.fillText('💕', headX + 11, headY - 9);
+        ctx.globalAlpha = alpha;
+      } else if (guest.behavior?.kind === 'impatient' && (guest.behavior.phase === 'waiting' || guest.behavior.phase === 'nagging')) {
+        // Patience ring above the head (drains while waiting, pulses red while nagging)
+        const b = guest.behavior;
+        const frac = b.phase === 'waiting' ? Math.max(0, b.patienceLeft / PATIENCE.timeoutSec) : 0;
+        const ry = headY - 15;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.7)';
+        ctx.beginPath();
+        ctx.arc(headX + 12, ry, 4.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = b.phase === 'nagging' ? (Math.sin(stride) > 0 ? '#ef4444' : '#fca5a5') : frac > 0.35 ? '#22d3ee' : '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(headX + 12, ry, 4.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (b.phase === 'nagging' ? 1 : frac));
+        ctx.stroke();
+        ctx.font = '6px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('🧲', headX + 12, ry + 2.2);
+      } else if (guest.guestType === 'attention_seeker' && guest.behavior?.kind === 'attention' && guest.behavior.phase === 'seeking') {
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🙋', headX + 12, headY - 10 - Math.abs(Math.sin(stride * 0.5)) * 3);
       }
 
       // Subtle context-aware floating icon (replaces noisy static FUNNS/SHOW text boxes!)
@@ -2510,6 +2854,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.direction = angleToIsoDirection(aimScreenAngle);
           }
 
+          {
+            // Remember where the camera points (attention seekers plant themselves in front of the lens)
+            const aw = isoToWorld(Math.cos(aimScreenAngle), Math.sin(aimScreenAngle));
+            const al = Math.hypot(aw.x, aw.y) || 1;
+            lastAimWX = aw.x / al;
+            lastAimWY = aw.y / al;
+          }
+
           player.shootCooldown = Math.max(0, player.shootCooldown - simDt);
           player.shootAnimTimer = Math.max(0, player.shootAnimTimer - simDt);
           flashEngine.update(simDt * 1000);
@@ -2614,10 +2966,66 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 color: characterConfigRef.current.photographerStyle?.flashColor,
                 lensScreenOffset: { x: player.lensOffsetX, y: player.lensOffsetY },
                 layer: isBackFacingDirection(player.direction) ? 'behind' : 'front',
-                targets: guests,
+                targets: vipCouple.length ? [...guests, ...vipCouple] : guests,
                 tag: isWide ? 'wide' : 'pulse',
                 anchorKey: 'player',
               });
+
+              // WHOLE-FRAME SCORE at the shutter click: everyone inside the light cone counts
+              // (bride/groom multiplier, DJ combo, potential-couple pairs, staff penalty)
+              {
+                const cone = {
+                  originX: player.x,
+                  originY: player.y,
+                  angle: Math.atan2(dirWY, dirWX),
+                  range: (isWide ? 150 : 185) * lensRangeBonus,
+                  halfFov: ((isWide ? 72 : 48) * Math.PI) / 360,
+                };
+                const subjects: FrameSubject[] = [];
+                for (const g of guests) {
+                  if (isTargetInCone(cone, g, 10)) {
+                    subjects.push({ kind: g.guestType ?? 'regular', coupleId: g.coupleId });
+                  }
+                }
+                for (const g of vipCouple) {
+                  if (isTargetInCone(cone, g, 12)) subjects.push({ kind: g.guestType ?? 'regular' });
+                }
+                const hallNow = discoBeatPhase / 2.8;
+                BARTENDER_LOOKS.forEach((_, bi) => {
+                  const pose = getBartenderPose(bi, hallNow);
+                  if (isTargetInCone(cone, pose, 8)) subjects.push({ kind: 'staff' });
+                });
+                for (const w of waiters) {
+                  if (isTargetInCone(cone, w, 8)) subjects.push({ kind: 'staff' });
+                }
+                if (isTargetInCone(cone, { x: -95, y: -255 }, 14)) subjects.push({ kind: 'dj' });
+
+                const frame = scoreFrame(subjects);
+                if (frame.score !== 0 || frame.reputation > 0) {
+                  applyScoreDelta(frame.score);
+                  reputation += frame.reputation;
+                  const special = frame.tags.some((t) => t !== 'empty');
+                  const labelX = player.x + dirWX * 60;
+                  const labelY = player.y + dirWY * 60;
+                  const color =
+                    frame.score < 0
+                      ? '#f87171'
+                      : frame.tags.includes('dj_combo') || frame.tags.includes('bride_groom')
+                      ? '#fbbf24'
+                      : frame.tags.includes('couple_pair')
+                      ? '#f472b6'
+                      : '#e2e8f0';
+                  addFrameLabel(`${frame.score >= 0 ? '+' : ''}${frame.score}`, labelX, labelY, color, frame.labelHe);
+                  if (special && frame.labelHe) {
+                    player.stationFeedbackText = `📸 ${frame.labelHe} (${frame.score >= 0 ? '+' : ''}${frame.score})`;
+                    player.stationFeedbackTimer = 2.2;
+                  }
+                  if (frame.tags.includes('dj_combo') || frame.tags.includes('bride_groom')) {
+                    sound.playFanfare(true);
+                    cameraTrauma = Math.min(1, cameraTrauma + 0.25);
+                  }
+                }
+              }
 
               player.shootAnimTimer = 0.15;
               player.scaleX = 0.92;
@@ -2808,6 +3216,16 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             const dy = player.y - guest.y;
             const dist = Math.hypot(dx, dy) || 1;
 
+            // Personality state machine (attention seeker / impatient magnet tracker)
+            if (guest.behavior && guest.behavior.kind !== 'none') {
+              const stepped = stepBehavior(guest.behavior, simDt, Math.random);
+              guest.behavior = stepped.state;
+              if (stepped.events.length) applyBehaviorEvents(guest, stepped.events);
+            }
+            const approachMode = guest.behavior ? wantsToApproachPhotographer(guest.behavior) : null;
+            const canApproach =
+              approachMode !== null && !guest.seekingMagnet && !player.isSeatedAtStation && !player.atCutter;
+
             if (guest.speechBubbleText) {
               guest.wantsPhotoTimer -= simDt;
               if (guest.wantsPhotoTimer <= 0) {
@@ -2819,7 +3237,37 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               guest.speechBubbleText = list[(guest.id + wave) % list.length];
             }
 
-            if (guest.seekingMagnet) {
+            if (canApproach) {
+              // 0. PERSONALITY: attention seeker plants themselves in front of the lens ("צלמוס צלם אותי!"),
+              //    impatient tracker follows the photographer around asking about their magnet
+              guest.isSeated = false;
+              guest.role = 'dancer';
+              if (guest.guestActivity === 'seated' || guest.guestActivity === 'bar') {
+                guest.guestActivity = 'dancing';
+                guest.atBarArrived = false;
+                guest.barSpotIdx = undefined;
+              }
+              let tx: number;
+              let ty: number;
+              if (approachMode === 'seek') {
+                const side = (guest.id % 2 === 0 ? 1 : -1) * 8;
+                tx = player.x + lastAimWX * ATTENTION.standInFrontDistance - lastAimWY * side;
+                ty = player.y + lastAimWY * ATTENTION.standInFrontDistance + lastAimWX * side;
+              } else {
+                const ang = Math.atan2(guest.y - player.y, guest.x - player.x);
+                tx = player.x + Math.cos(ang) * PATIENCE.followDistance;
+                ty = player.y + Math.sin(ang) * PATIENCE.followDistance;
+              }
+              const mv = moveTowardPoint(guest, { x: tx, y: ty }, approachMode === 'seek' ? 78 : 70, simDt, 3);
+              const stepLen = Math.hypot(mv.x - guest.x, mv.y - guest.y);
+              guest.x = mv.x;
+              guest.y = mv.y;
+              guest.strideDist += stepLen * 1.5;
+              const isoG = worldToIso(guest.x, guest.y);
+              const isoPl = worldToIso(player.x, player.y);
+              guest.direction = angleToIsoDirection(Math.atan2(isoPl.y - isoG.y, isoPl.x - isoG.x));
+              if (approachMode === 'seek') guest.danceMove = 'wave';
+            } else if (guest.seekingMagnet) {
               // 1. Guest walking purposefully towards the tripod whiteboard easel next to the dance floor!
               const targetX = TRIPOD_BOARD_POS.x + ((guest.id % 3) - 1) * 10;
               const targetY = TRIPOD_BOARD_POS.y + 14 + ((guest.id % 2) * 6);
@@ -3176,9 +3624,21 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           }
 
           // ====================================================================
+          // BRIDE & GROOM: dance floor ↔ table visits ↔ bar; under the chuppah for the kiss moment
+          // ====================================================================
+          gameClock += simDt;
+          for (let li = frameLabels.length - 1; li >= 0; li--) {
+            frameLabels[li].life -= simDt;
+            frameLabels[li].y -= simDt * 14;
+            if (frameLabels[li].life <= 0) frameLabels.splice(li, 1);
+          }
+          updateVipCouple(simDt);
+
+          // ====================================================================
           // UPDATE FLASH SHOTS & PHOTOGRAPH GUESTS (WITH VIP, FRAME PREFERENCES & TABLE REVIVAL)
           // ====================================================================
           const maxCapNow = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
+          const photographable = vipCouple.length ? [...guests, ...vipCouple] : guests;
           for (const pr of projectiles) {
             if (!pr.active) continue;
             pr.x += pr.vx * simDt;
@@ -3189,7 +3649,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               continue;
             }
 
-            for (const guest of guests) {
+            for (const guest of photographable) {
               const d = Math.hypot(pr.x - guest.x, pr.y - guest.y);
               if (d < 32) {
                 pr.active = false;
@@ -3240,9 +3700,20 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                   : null;
                 guest.wantsPhotoTimer = guest.speechBubbleText ? 1.1 : 0;
 
-                // Photo goes into camera memory roll (up to SD card capacity)!
+                // Photo goes into camera memory roll (up to SD card capacity) — remember who's in it
                 if (player.photosInCamera < maxCapNow) {
                   player.photosInCamera++;
+                  magnetLedger.push(guest.id, gameClock);
+                }
+
+                // Personality reactions (attention seeker satisfied / magnet tracker's countdown starts)
+                if (guest.behavior) {
+                  const res = onGuestPhotographed(guest.behavior, Math.random);
+                  guest.behavior = res.state;
+                  if (res.events.length) applyBehaviorEvents(guest, res.events);
+                }
+                if (guest.guestType === 'bride' || guest.guestType === 'groom') {
+                  chuppahCelebrateTimer = 1.8;
                 }
 
                 // Mini photo thumbnail flies to photographer's camera bag!
@@ -3259,10 +3730,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 comboTimer = 4.2;
                 sound.playComboChime(combo);
 
-                const baseGained = calculateKillScore(guest.archetype, combo);
+                // Subject rewards come from the whole-frame score at the shutter click;
+                // per-capture extras: magnet-frame preference + reviving a seated guest + combo
                 const gained =
-                  Math.round(baseGained * frameEval.scoreMultiplier) +
-                  (revivedToDancefloor ? 120 : 0);
+                  scoreCaptureExtras({
+                    kind: guest.guestType ?? 'regular',
+                    frameMatched: frameEval.matched,
+                    revived: revivedToDancefloor,
+                  }) + Math.min(combo, 12) * 10;
                 score += gained;
                 bestScore = Math.max(bestScore, score);
 
@@ -3297,7 +3772,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                     score += vipScore;
                     bestScore = Math.max(bestScore, score);
                     player.partyJoy = Math.min(100, player.partyJoy + vipEvent.bonusJoy);
-                    player.photosInCamera = Math.min(maxCapNow, player.photosInCamera + 1);
+                    if (player.photosInCamera < maxCapNow) {
+                      player.photosInCamera++;
+                      magnetLedger.push(null, gameClock);
+                    }
                     sound.playFanfare(true);
                     spawnParticles(guest.x, guest.y, 36, '#fbbf24', 180, 48);
                     player.stationFeedbackText = `⭐ צילמת את האירוע הנכון! +${vipEvent.bonusJoy}% שמחה ו-+${vipScore} נק'! עכשיו הוצא מגנט ללוח בזמן! ⏱️🧲`;
@@ -3343,77 +3821,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               }
             }
 
-            // Check if Flash Shot hits the Chuppah VIP Couple (Bride & Groom at (115, -172))
-            if (pr.active) {
-              const chuppahDist = Math.hypot(pr.x - 118, pr.y - -172);
-              if (chuppahDist < 48) {
-                pr.active = false;
-                chuppahCelebrateTimer = 1.8;
-                const activeFrame = selectedFrameRef.current;
-
-                if (player.photosInCamera < maxCapNow) {
-                  player.photosInCamera++;
-                }
-
-                spawnFlyingThumb(
-                  118,
-                  -172,
-                  player.x,
-                  player.y,
-                  MAGNET_FRAMES[activeFrame].borderColor
-                );
-
-                combo++;
-                comboTimer = 4.2;
-                sound.playComboChime(combo);
-
-                const isChuppahVip = Boolean(vipEvent && vipEvent.kind === 'chuppah_kiss');
-                const shotJoyEval = evaluateGuestJoyFromShot({
-                  activeVipEvent: vipEvent,
-                  isRightEventShot: isChuppahVip,
-                  isFrameMatched: activeFrame === 'gold',
-                  revivedSeatedGuest: false,
-                });
-
-                player.partyJoy = Math.min(100, player.partyJoy + shotJoyEval.joyDelta);
-                score += isChuppahVip ? 240 : 120;
-                bestScore = Math.max(bestScore, score);
-
-                if (vipEvent && isChuppahVip) {
-                  const nextCaptured = vipEvent.photosCaptured + 1;
-                  if (nextCaptured >= vipEvent.requiredPhotos) {
-                    const isVipFrameMatch = activeFrame === vipEvent.preferredFrame;
-                    const vipScore = Math.round(
-                      vipEvent.bonusScore * (isVipFrameMatch ? 1.5 : 1.0)
-                    );
-                    score += vipScore;
-                    bestScore = Math.max(bestScore, score);
-                    player.partyJoy = Math.min(100, player.partyJoy + vipEvent.bonusJoy);
-                    player.photosInCamera = Math.min(maxCapNow, player.photosInCamera + 1);
-                    sound.playFanfare(true);
-                    spawnParticles(118, -172, 36, '#fbbf24', 180, 48);
-                    player.stationFeedbackText = `💍 צילמת את רגע השיא בחופה! +${vipEvent.bonusJoy}% שמחה ו-+${vipScore} נק'! עכשיו הוצא מגנט ללוח בזמן! ⏱️🧲`;
-                    player.stationFeedbackTimer = 3.4;
-                    vipEvent = null;
-                    nextVipCooldown = 4.5;
-                  } else {
-                    vipEvent = {
-                      ...vipEvent,
-                      photosCaptured: nextCaptured,
-                    };
-                    player.stationFeedbackText = `💍 צילמת את החתן והכלה בחופה (${nextCaptured}/${vipEvent.requiredPhotos})! +${shotJoyEval.joyDelta}% שמחה!`;
-                    player.stationFeedbackTimer = 2.0;
-                  }
-                } else {
-                  player.stationFeedbackText = '💍 תמונה רומנטית של החתן והכלה בחופה! 📸✨';
-                  player.stationFeedbackTimer = 1.8;
-                }
-
-                hitstopRemaining = 0.045;
-                cameraTrauma = Math.min(1, cameraTrauma + 0.22);
-                spawnParticles(118, -172, 22, '#fbbf24', 150);
-              }
-            }
           }
 
           // Update Flying Photo Thumbnails
@@ -3718,8 +4125,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         { wx: -52, wy: -205, outfit: '#334155', hair: '#3b2314', isDress: false, hat: 'green_top' as const, sign: null },
         { wx: 15, wy: -225, outfit: '#1e293b', hair: '#78350f', isDress: false, hat: 'none' as const, sign: null },
         { wx: 72, wy: -222, outfit: '#574636', hair: '#1c1410', isDress: false, hat: 'none' as const, sign: null },
-        { wx: 112, wy: -175, outfit: '#1e1b4b', hair: '#1c1410', isDress: false, hat: 'cone' as const, sign: null },
-        { wx: 128, wy: -162, outfit: '#ffffff', hair: '#78350f', isDress: true, hat: 'veil' as const, sign: null },
+        // (the bride & groom are real actors now — see vipCouple)
       ];
 
       for (let idx = 0; idx < chuppahGuests.length; idx++) {
@@ -4715,12 +5121,20 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         for (const guest of guests) {
           const eIso = worldToIso(guest.x, guest.y);
           const liveOutfit = outfits[guest.outfitIndex % outfits.length];
+          // Cast-sheet look follows the outfit's gender; the seated (procedural) body uses the same palette
+          const isDressNow = liveOutfit ? liveOutfit.isDress : guest.isDress;
+          const lookPool = isDressNow ? GUEST_LOOKS_FEMALE : GUEST_LOOKS_MALE;
+          const castLook = lookPool[guest.id % lookPool.length];
+          const lookPalette = CAST_LOOKS[castLook].palette;
+          const liveHat = liveOutfit ? liveOutfit.hat : guest.hatType;
           const activeGuest: WeddingGuestActor = {
             ...guest,
-            outfitColor: liveOutfit ? liveOutfit.outfit : guest.outfitColor,
-            hairColor: liveOutfit ? liveOutfit.hair : guest.hairColor,
-            isDress: liveOutfit ? liveOutfit.isDress : guest.isDress,
-            hatType: liveOutfit ? liveOutfit.hat : guest.hatType,
+            castLook,
+            outfitColor: lookPalette.outfit,
+            hairColor: lookPalette.hair,
+            isDress: isDressNow,
+            // Only the bride wears a veil
+            hatType: liveHat === 'veil' ? 'none' : liveHat,
             speechBubbleText: allowedBubbleGuestIds.has(guest.id)
               ? guest.speechBubbleText
               : null,
@@ -4744,6 +5158,62 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               if (leanAngle) ctx.restore();
             },
           });
+        }
+
+        // The bride & groom (embracing under the chuppah during the kiss moment)
+        if (castSheet?.embrace && isCoupleAtChuppah()) {
+          const [bride, groom] = vipCouple;
+          const mx = (bride.x + groom.x) / 2;
+          const my = (bride.y + groom.y) / 2;
+          const mIso = worldToIso(mx, my);
+          const sheetNow = castSheet;
+          drawables.push({
+            sortY: mIso.y,
+            draw: () => {
+              const fr = sheetNow.embrace!;
+              const k = EMBRACE_HEIGHT / fr.height;
+              const dw = fr.width * k;
+              const dh = fr.height * k;
+              const gx = originX + mIso.x;
+              const gy = originY + mIso.y;
+              const gScale = characterConfigRef.current.guestScale || 1;
+              ctx.save();
+              ctx.translate(gx, gy);
+              ctx.scale(gScale, gScale);
+              ctx.fillStyle = 'rgba(15, 10, 8, 0.45)';
+              ctx.beginPath();
+              ctx.ellipse(0, 1, 18, 8, 0, 0, Math.PI * 2);
+              ctx.fill();
+              const sway = Math.sin(discoBeatPhase * 0.8) * 0.02;
+              ctx.rotate(sway);
+              ctx.drawImage(sheetNow.canvas, fr.x, fr.y, fr.width, fr.height, -fr.anchorX * dw, -dh, dw, dh);
+              ctx.rotate(-sway);
+              // Floating hearts
+              ctx.font = '10px sans-serif';
+              ctx.textAlign = 'center';
+              for (let h = 0; h < 3; h++) {
+                const t = (discoBeatPhase * 0.5 + h / 3) % 1;
+                ctx.globalAlpha = 1 - t;
+                ctx.fillText('💗', Math.sin(t * 6 + h) * 10, -dh - 4 - t * 22);
+              }
+              ctx.globalAlpha = 1;
+              if (bride.speechBubbleText && chuppahCelebrateTimer > 0) {
+                ctx.font = 'bold 9px sans-serif';
+                ctx.fillStyle = '#fde68a';
+                ctx.fillText('תמונה מושלמת בחופה! 💍✨', 0, -dh - 30);
+              }
+              ctx.restore();
+            },
+          });
+        } else {
+          for (const m of vipCouple) {
+            const mIso = worldToIso(m.x, m.y);
+            const snapshot: WeddingGuestActor = { ...m };
+            drawables.push({
+              sortY: mIso.y,
+              draw: () => drawWeddingGuestSprite(originX + mIso.x, originY + mIso.y, snapshot, snapshot.strideDist, 1),
+            });
+          }
         }
 
         // Queue Roaming Catering Waiters with Silver Trays
@@ -4857,6 +5327,35 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       // Ceiling-hung chandeliers, mirror spheres & fairy-light curtain always render above floor actors
       drawHallCeiling(ctx, originX, originY, discoBeatPhase / 2.8);
+
+      // Whole-frame score labels (Hebrew, RTL) floating above the photographed area
+      if (frameLabels.length) {
+        ctx.save();
+        ctx.textAlign = 'center';
+        for (const fl of frameLabels) {
+          const li = worldToIso(fl.x, fl.y, 70);
+          const a = Math.min(1, fl.life / 0.5);
+          const lx = originX + li.x;
+          const ly = originY + li.y;
+          ctx.globalAlpha = a;
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = 'rgba(10, 8, 20, 0.85)';
+          ctx.fillStyle = fl.color;
+          // Main line: the score (or a short Hebrew notice); sub line: the Hebrew frame breakdown
+          const isNumber = /^[+-]?\d+$/.test(fl.text);
+          ctx.direction = isNumber ? 'ltr' : 'rtl';
+          ctx.font = isNumber ? 'bold 16px "Heebo", "Assistant", sans-serif' : 'bold 12px "Heebo", "Assistant", sans-serif';
+          ctx.strokeText(fl.text, lx, ly);
+          ctx.fillText(fl.text, lx, ly);
+          if (fl.sub) {
+            ctx.direction = 'rtl';
+            ctx.font = 'bold 11px "Heebo", "Assistant", sans-serif';
+            ctx.strokeText(fl.sub, lx, ly + 14);
+            ctx.fillText(fl.sub, lx, ly + 14);
+          }
+        }
+        ctx.restore();
+      }
 
       // ========================================================================
       // VOLUMETRIC MOVING-HEAD CONCERT SPOTLIGHTS & LASER BEAMS (Section 1)
@@ -5151,6 +5650,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           ghostHp: player.ghostJoy,
           dashCharge: player.dashCharge,
           score,
+          leads: reputation,
+          naggingGuests: guests.filter((g) => g.behavior?.kind === 'impatient' && g.behavior.phase === 'nagging').length,
           bestScore,
           combo,
           wave,

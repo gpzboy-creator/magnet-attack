@@ -75,6 +75,23 @@ export function keyOutGreenInPlace(rgba: Uint8ClampedArray): void {
 }
 
 /**
+ * Keys out any flat background colour (Euclidean RGB distance <= tolerance) in place.
+ */
+export function keyOutColorInPlace(
+  rgba: Uint8ClampedArray,
+  key: [number, number, number],
+  tolerance: number
+): void {
+  const tol2 = tolerance * tolerance;
+  for (let i = 0; i < rgba.length; i += 4) {
+    const dr = rgba[i] - key[0];
+    const dg = rgba[i + 1] - key[1];
+    const db = rgba[i + 2] - key[2];
+    if (dr * dr + dg * dg + db * db <= tol2) rgba[i + 3] = 0;
+  }
+}
+
+/**
  * Finds sprite frames in a keyed strip: columns with opaque pixels form horizontal
  * segments; each segment's opaque rows give its vertical bounds.
  */
