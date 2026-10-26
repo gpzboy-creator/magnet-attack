@@ -42,6 +42,7 @@ import {
   PLAYER_DASH_RATE,
   PLAYER_DECEL_RATE,
   approachVelocity,
+  moveTowardPoint,
   calculateCardTransferTiming,
   chooseWorkstationAction,
   shouldPickUpCameraFromDesk,
@@ -54,7 +55,6 @@ import {
   resolveFloorObstacles,
   stepCrowdJoy,
   stepMagnetDeliveryTracker,
-  stepWaiterPatrol,
   updateWorkstationChairState,
   worldToIso,
 } from '../game/rules';
@@ -71,15 +71,41 @@ import {
   drawPixelThermalPrinter,
 } from '../game/workstationPixelArt';
 import {
-  drawHatzarHaMalkaFloor,
-  drawHatzarHaMalkaWallsAndCeiling,
-  drawHatzarHaMalkaCeilingFixtures,
+  drawChuppahRunway,
   drawPixelDjStageAndLedWall,
-  drawPixelHatzarBanquetTable,
   drawPixelHatzarChuppah,
-  drawPixelOliveTreeAndMacrame,
-  drawPixelRibbedWoodBar,
 } from '../game/venuePixelArt';
+import {
+  BARTENDER_STATIONS,
+  BAR_GUEST_SPOTS,
+  BAR_PICKUP_SPOTS,
+  BartenderAction,
+  BartenderLook,
+  DECOR_TABLES,
+  ISLAND_BAR,
+  LONG_TABLE,
+  LONG_TABLE_SEATS,
+  LOUNGE,
+  RATTAN_HIGH_TABLES,
+  drawBarShelfTower,
+  drawBartender,
+  drawCigaretteSmoke,
+  drawGhostChair,
+  drawGoboProjections,
+  drawHallCeiling,
+  drawHallFloor,
+  drawHallWalls,
+  drawHeldDrink,
+  drawIslandBarPiece,
+  drawLongBanquetTable,
+  drawRattanHighTable,
+  drawUplitTree,
+  drawVelvetLounge,
+  getIslandBarPieces,
+  getMovingHeads,
+  BARTENDER_LOOKS,
+  getBartenderPose,
+} from '../game/hallPixelArt';
 import {
   CharacterAndSizeConfig,
   DEFAULT_CHARACTER_AND_SIZE_CONFIG,
@@ -159,13 +185,20 @@ export interface WeddingGuestActor {
   partnerId?: number | null;
   isPartnerSecond?: boolean;
   repositionTimer?: number;
-  guestActivity?: 'dancing' | 'recruiting' | 'seated';
+  guestActivity?: 'dancing' | 'recruiting' | 'seated' | 'bar';
   recruitTargetId?: number | null;
   recruitProgressTimer?: number;
   arrivalDelayTimer?: number;
   isEnteringFloor?: boolean;
   // Seconds left of the "caught in the camera flash" reaction (white blow-out + eye blink)
   flashTintTimer?: number;
+  // Bar life: drink in hand, bar visit spot/time, smoker
+  drinkTimer?: number;
+  drinkKind?: number;
+  barSpotIdx?: number;
+  barTimer?: number;
+  atBarArrived?: boolean;
+  isSmoker?: boolean;
   // Seconds before this guest may switch between seated <-> dancing again (prevents flip-flopping)
   activityCooldown?: number;
 }
@@ -276,6 +309,7 @@ const BOARD_INTERACTION_RADIUS = 85;
 const WORKSTATION_POS = { x: 350, y: 35 };
 const WORKSTATION_CHAIR_POS = { x: WORKSTATION_POS.x - 8, y: WORKSTATION_POS.y + 34 };
 const STATION_INTERACTION_RADIUS = 95;
+const movingHeads = getMovingHeads();
 // Where the photographer stands to operate the guillotine cutter (in front of the desk's right end,
 // facing up-right toward the cutter at WORKSTATION_POS + (28, 8))
 const CUTTER_STAND_POS = { x: WORKSTATION_POS.x + 28, y: WORKSTATION_POS.y + 38 };
@@ -283,12 +317,27 @@ const CUTTER_STAND_POS = { x: WORKSTATION_POS.x + 28, y: WORKSTATION_POS.y + 38 
 // Solid floor objects the photographer can't walk through (world coords, matching the drawn footprints)
 const PLAYER_BODY_RADIUS = 9;
 const FLOOR_OBSTACLES: FloorObstacle[] = [
-  // Banquet tables (tablecloth ring)
-  ...BANQUET_TABLES.map((t) => ({ kind: 'circle' as const, x: t.wx, y: t.wy, r: 30 })),
-  // Olive tree planter with wrap-around bench
-  { kind: 'circle', x: -245, y: -235, r: 30 },
-  // Curved wooden bar
-  { kind: 'circle', x: 255, y: -105, r: 33 },
+  // Long banquet tables (gameplay + decorative)
+  ...[...BANQUET_TABLES.map((t) => ({ x: t.wx, y: t.wy })), ...DECOR_TABLES].map((t) => ({
+    kind: 'box' as const,
+    minX: t.x - LONG_TABLE.length / 2,
+    minY: t.y - LONG_TABLE.depth / 2,
+    maxX: t.x + LONG_TABLE.length / 2,
+    maxY: t.y + LONG_TABLE.depth / 2,
+  })),
+  // Uplit tree deck + velvet lounge
+  { kind: 'circle', x: LOUNGE.treeX, y: LOUNGE.treeY, r: 22 },
+  { kind: 'circle', x: LOUNGE.sofaX, y: LOUNGE.sofaY, r: 26 },
+  // Rattan high tables along the green wall
+  ...RATTAN_HIGH_TABLES.map((t) => ({ kind: 'circle' as const, x: t.x, y: t.y, r: 14 })),
+  // Square island bar (counter ring + shelf tower)
+  {
+    kind: 'box',
+    minX: ISLAND_BAR.cx - ISLAND_BAR.half,
+    minY: ISLAND_BAR.cy - ISLAND_BAR.half,
+    maxX: ISLAND_BAR.cx + ISLAND_BAR.half,
+    maxY: ISLAND_BAR.cy + ISLAND_BAR.half,
+  },
   // DJ stage platform + booth
   { kind: 'box', minX: -148, minY: -276, maxX: -50, maxY: -228 },
   // Chuppah stage platform
@@ -850,7 +899,15 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let titlePanTime = 0;
     let nextGuestId = 1;
     let guests: WeddingGuestActor[] = [];
-    let waiters: WaiterActorState[] = [];
+    // Waiters run drinks: pick up at the bar → walk to a guest → serve → back to the bar
+    type DrinkWaiter = WaiterActorState & {
+      mode: 'to_bar' | 'loading' | 'to_guest' | 'serving';
+      targetGuestId: number | null;
+      timer: number;
+      carrying: boolean;
+    };
+    let waiters: DrinkWaiter[] = [];
+    let barVisitTimer = 4;
     let vipEvent: VipEventState | null = null;
     let vipEventSeq = 0;
     let nextVipCooldown = 2.5;
@@ -1269,39 +1326,25 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       nextVipCooldown = 5.0;
       magnetDeliveryTracker = createInitialMagnetDeliveryTracker();
 
-      // Spawn 2 Roaming Catering Waiters carrying trays between tables and dancefloor
-      waiters = [
-        {
-          id: 1,
-          x: -140,
-          y: -15,
+      // Three waiters in black shirts + aprons, running drinks from the island bar to the guests
+      waiters = [0, 1, 2].map((i) => {
+        const start = BAR_PICKUP_SPOTS[i % BAR_PICKUP_SPOTS.length];
+        return {
+          id: i + 1,
+          x: start.x - i * 6,
+          y: start.y + i * 6,
           waypointIdx: 0,
-          waypoints: [
-            { x: -165, y: -95 },
-            { x: -180, y: 65 },
-            { x: -125, y: 175 },
-            { x: -115, y: 0 },
-          ],
-          speed: 54 + waveNum * 4,
-          trayItem: 'champagne',
+          waypoints: [],
+          speed: 60 + waveNum * 4 + i * 4,
+          trayItem: 'champagne' as const,
           bumpCooldown: 0,
-        },
-        {
-          id: 2,
-          x: 165,
-          y: 110,
-          waypointIdx: 0,
-          waypoints: [
-            { x: 145, y: 155 },
-            { x: 225, y: 45 },
-            { x: 145, y: -85 },
-            { x: 65, y: 120 },
-          ],
-          speed: 58 + waveNum * 4,
-          trayItem: 'steak',
-          bumpCooldown: 0,
-        },
-      ];
+          mode: 'loading' as const,
+          targetGuestId: null,
+          timer: 0.6 + i * 1.1,
+          carrying: false,
+        };
+      });
+      barVisitTimer = 4;
 
       // Same guests for the whole event – only reset magnet state for the new wave
       if (waveNum > 1 && guests.length > 0) {
@@ -1324,13 +1367,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       //   * 2 guests (10%) are seated at banquet tables (Table 1 & Table 3)
       //   * 2 guests (10%) are approaching those tables trying to drag the seated guests to dance!
       // ======================================================================
-      const tableSeatsTemplate = [
-        { dx: -26, dy: -12, dir: 'SE' as IsoDirection },
-        { dx: 26, dy: -10, dir: 'SW' as IsoDirection },
-        { dx: -18, dy: 18, dir: 'NE' as IsoDirection },
-        { dx: 18, dy: 20, dir: 'NW' as IsoDirection },
-        { dx: 0, dy: 24, dir: 'N' as IsoDirection },
-      ];
+      // Seats along the long banquet tables (far side faces the viewer, near side faces away)
+      const tableSeatsTemplate = LONG_TABLE_SEATS.map((st) => ({
+        dx: st.dx,
+        dy: st.dy,
+        dir: st.dir as IsoDirection,
+      }));
 
       const totalGuests = 20;
       const baseId = nextGuestId;
@@ -1453,6 +1495,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             : null,
           poseTimer: 0,
           isSeated: !isInitiallyRecruiting,
+          isSmoker: i % 4 === 1,
         });
       }
     };
@@ -1654,32 +1697,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       const seatedYOffset = isSeated ? 10 : 0;
 
-      // Ornate Banquet Chair if seated
+      // Clear acrylic ghost chair under a seated guest
       if (isSeated) {
-        // Chair back frame (gold/mahogany)
-        ctx.fillStyle = '#5c2d16';
-        ctx.strokeStyle = '#1c1410';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.roundRect(-9, -35, 18, 17, [4, 4, 0, 0]);
-        ctx.fill();
-        ctx.stroke();
-
-        // Velvet chair back cushion with gold trim
-        ctx.fillStyle = '#991b1b';
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(-6.5, -32.5, 13, 12, [3]);
-        ctx.fill();
-        ctx.stroke();
-
-        // Padded Chair Seat Cushion
-        ctx.fillStyle = '#b45309';
-        ctx.strokeStyle = '#1c1410';
-        ctx.lineWidth = 1.4;
-        ctx.fillRect(-10, -18, 20, 5);
-        ctx.strokeRect(-10, -18, 20, 5);
+        drawGhostChair(ctx, 0, 0, guest.direction !== 'NE' && guest.direction !== 'N' && guest.direction !== 'NW');
       }
 
       // Stepping Dance Shoes / Legs
@@ -1819,13 +1839,24 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.fill();
         ctx.stroke();
       } else {
-        // Dancing arms
+        // Dancing arms (smokers at the bar hold the cigarette up by the face)
+        const smokingNow = Boolean(guest.isSmoker && guest.guestActivity === 'bar' && guest.atBarArrived);
         ctx.beginPath();
         ctx.moveTo(-9.5 + grooveSway * 0.5, -35 + bob);
-        ctx.lineTo(-14 + grooveSway * 0.5, -28 + bob - armSwing * 0.5);
+        if (smokingNow) {
+          ctx.lineTo(-8 + grooveSway * 0.5, -44 + bob);
+        } else {
+          ctx.lineTo(-14 + grooveSway * 0.5, -28 + bob - armSwing * 0.5);
+        }
         ctx.moveTo(9.5 + grooveSway * 0.5, -35 + bob);
         ctx.lineTo(14 + grooveSway * 0.5, -32 + bob + armSwing * 0.5);
         ctx.stroke();
+        if ((guest.drinkTimer ?? 0) > 0) {
+          drawHeldDrink(ctx, 14 + grooveSway * 0.5, -32 + bob + armSwing * 0.5, guest.drinkKind ?? guest.id);
+        }
+        if (smokingNow) {
+          drawCigaretteSmoke(ctx, -9 + grooveSway * 0.5, -45 + bob, discoBeatPhase / 2.8, guest.id);
+        }
       }
       ctx.lineCap = 'butt';
 
@@ -2348,9 +2379,77 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // Update Roaming Catering Waiters & Check Tray Bump
           for (let wIdx = 0; wIdx < waiters.length; wIdx++) {
-            const wStep = stepWaiterPatrol(waiters[wIdx], simDt);
-            waiters[wIdx] = wStep.nextWaiter;
             const wActor = waiters[wIdx];
+            wActor.bumpCooldown = Math.max(0, wActor.bumpCooldown - simDt);
+            if (wActor.mode === 'to_bar') {
+              const pick = BAR_PICKUP_SPOTS[wActor.id % BAR_PICKUP_SPOTS.length];
+              const mv = moveTowardPoint(wActor, pick, wActor.speed, simDt, 6);
+              wActor.x = mv.x;
+              wActor.y = mv.y;
+              if (mv.arrived) {
+                wActor.mode = 'loading';
+                wActor.timer = 0.9 + Math.random() * 0.8;
+              }
+            } else if (wActor.mode === 'loading') {
+              wActor.timer -= simDt;
+              if (wActor.timer <= 0) {
+                // Next guest without a drink that no other waiter is already serving
+                const candidates = guests.filter(
+                  (g) =>
+                    !g.seekingMagnet &&
+                    (g.drinkTimer ?? 0) <= 0 &&
+                    (g.guestActivity === 'seated' ||
+                      (g.guestActivity === 'dancing' && !g.isEnteringFloor)) &&
+                    !waiters.some((o) => o !== wActor && o.targetGuestId === g.id)
+                );
+                if (candidates.length > 0) {
+                  const tgt = candidates[Math.floor(Math.random() * candidates.length)];
+                  wActor.targetGuestId = tgt.id;
+                  wActor.carrying = true;
+                  wActor.trayItem = Math.random() < 0.5 ? 'champagne' : 'steak';
+                  wActor.mode = 'to_guest';
+                } else {
+                  wActor.timer = 1.2;
+                }
+              }
+            } else if (wActor.mode === 'to_guest') {
+              const tgt = guests.find((g) => g.id === wActor.targetGuestId);
+              if (!tgt || tgt.seekingMagnet || tgt.guestActivity === 'bar' || (tgt.drinkTimer ?? 0) > 0) {
+                wActor.mode = 'to_bar';
+                wActor.targetGuestId = null;
+              } else {
+                // Approach from the aisle side: seated guests from behind their chair, dancers from the side
+                const tbl = BANQUET_TABLES.find((tb) => tb.id === tgt.tableId);
+                const awayY =
+                  tgt.guestActivity === 'seated' && tbl ? (tgt.y < tbl.wy ? -12 : 12) : 6;
+                const mv = moveTowardPoint(
+                  wActor,
+                  { x: tgt.x + 10, y: tgt.y + awayY },
+                  wActor.speed,
+                  simDt,
+                  7
+                );
+                wActor.x = mv.x;
+                wActor.y = mv.y;
+                if (mv.arrived) {
+                  tgt.drinkTimer = 14 + Math.random() * 10;
+                  tgt.drinkKind = Math.floor(Math.random() * 4);
+                  if (!tgt.speechBubbleText && Math.random() < 0.5) {
+                    tgt.speechBubbleText = Math.random() < 0.5 ? '🥂 תודה!' : '🍷 לחיים!';
+                    tgt.wantsPhotoTimer = 1.3;
+                  }
+                  wActor.carrying = false;
+                  wActor.mode = 'serving';
+                  wActor.timer = 0.6;
+                }
+              }
+            } else {
+              wActor.timer -= simDt;
+              if (wActor.timer <= 0) {
+                wActor.mode = 'to_bar';
+                wActor.targetGuestId = null;
+              }
+            }
             if (!player.isSeatedAtStation && wActor.bumpCooldown <= 0) {
               const wdx = player.x - wActor.x;
               const wdy = player.y - wActor.y;
@@ -2661,6 +2760,35 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
+          // BAR VISITS: every few seconds a dancer walks to the island bar for a drink
+          // (some lean on the counter, smokers light up), then returns to the dance floor
+          barVisitTimer -= simDt;
+          if (barVisitTimer <= 0) {
+            barVisitTimer = 2.5 + Math.random() * 3;
+            const atBar = guests.filter((g) => g.guestActivity === 'bar');
+            if (atBar.length < 4) {
+              const usedSpots = new Set(atBar.map((g) => g.barSpotIdx));
+              const freeSpots = BAR_GUEST_SPOTS.map((_, i) => i).filter((i) => !usedSpots.has(i));
+              const candidates = guests.filter(
+                (g) =>
+                  g.guestActivity === 'dancing' &&
+                  !g.isEnteringFloor &&
+                  !g.seekingMagnet &&
+                  g.celebrateTimer <= 0 &&
+                  (g.activityCooldown ?? 0) <= 0
+              );
+              if (freeSpots.length > 0 && candidates.length > 3) {
+                const goer = candidates[Math.floor(Math.random() * candidates.length)];
+                goer.guestActivity = 'bar';
+                goer.barSpotIdx = freeSpots[Math.floor(Math.random() * freeSpots.length)];
+                goer.barTimer = 7 + Math.random() * 7;
+                goer.atBarArrived = false;
+                goer.speechBubbleText = goer.isSmoker ? '🚬 יוצא לבר רגע' : '🍸 לבר!';
+                goer.wantsPhotoTimer = 1.4;
+              }
+            }
+          }
+
           // ====================================================================
           // UPDATE GUESTS (IN-PLACE SOCIAL DANCING, SPOT SWITCHING, RECRUITING & SEATED)
           // ====================================================================
@@ -2671,6 +2799,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             guest.hitFlashTimer = Math.max(0, guest.hitFlashTimer - simDt);
             if ((guest.flashTintTimer ?? 0) > 0) {
               guest.flashTintTimer = Math.max(0, (guest.flashTintTimer ?? 0) - simDt);
+            }
+            if ((guest.drinkTimer ?? 0) > 0) {
+              guest.drinkTimer = Math.max(0, (guest.drinkTimer ?? 0) - simDt);
             }
             guest.celebrateTimer = Math.max(0, guest.celebrateTimer - simDt);
             const dx = player.x - guest.x;
@@ -2721,6 +2852,46 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 player.partyJoy = Math.min(100, player.partyJoy + 15);
                 score += 250;
                 bestScore = Math.max(bestScore, score);
+              }
+            } else if (guest.guestActivity === 'bar') {
+              // 1b. AT THE ISLAND BAR: walk to a free spot, get a drink, lean / smoke / sway, then go back
+              guest.isSeated = false;
+              guest.role = 'dancer';
+              const spot = BAR_GUEST_SPOTS[guest.barSpotIdx ?? 0];
+              if (!guest.atBarArrived) {
+                const mv = moveTowardPoint(guest, spot, 52, simDt, 4);
+                const stepLen = Math.hypot(mv.x - guest.x, mv.y - guest.y);
+                if (stepLen > 0) {
+                  const isoG = worldToIso(guest.x, guest.y);
+                  const isoT = worldToIso(spot.x, spot.y);
+                  guest.direction = angleToIsoDirection(Math.atan2(isoT.y - isoG.y, isoT.x - isoG.x));
+                  guest.strideDist += stepLen * 1.5;
+                }
+                guest.x = mv.x;
+                guest.y = mv.y;
+                if (mv.arrived) {
+                  guest.atBarArrived = true;
+                  // Bartender hands over a drink
+                  guest.drinkTimer = Math.max(guest.drinkTimer ?? 0, (guest.barTimer ?? 8) + 8);
+                  guest.drinkKind = guest.id % 4;
+                }
+              } else {
+                // Face the bar; south-side guests sway to the music
+                const isoG = worldToIso(guest.x, guest.y);
+                const isoB = worldToIso(ISLAND_BAR.cx, ISLAND_BAR.cy);
+                guest.direction = angleToIsoDirection(Math.atan2(isoB.y - isoG.y, isoB.x - isoG.x));
+                const sway = (guest.barSpotIdx ?? 0) >= 3 ? Math.sin(guest.dancePhase * 1.2) * 1.8 : 0;
+                guest.x = spot.x + sway;
+                guest.y = spot.y;
+                guest.barTimer = (guest.barTimer ?? 0) - simDt;
+                if ((guest.barTimer ?? 0) <= 0) {
+                  guest.guestActivity = 'dancing';
+                  guest.atBarArrived = false;
+                  guest.barSpotIdx = undefined;
+                  guest.isEnteringFloor = true;
+                  guest.arrivalDelayTimer = 0;
+                  guest.activityCooldown = 6;
+                }
               }
             } else if (guest.guestActivity === 'seated') {
               // 2. SEATED GUEST AT BANQUET TABLE (or walking from dancefloor back to their chair)
@@ -2777,8 +2948,13 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                   guest.recruitTargetId = null;
                 }
               } else {
-                const standTargetX = (targetSeatGuest.seatX ?? targetSeatGuest.x) + 22;
-                const standTargetY = (targetSeatGuest.seatY ?? targetSeatGuest.y) + 12;
+                // Stand just behind the seated guest, on the side away from the table
+                const seatTbl = BANQUET_TABLES.find((tb) => tb.id === targetSeatGuest.tableId);
+                const seatSX = targetSeatGuest.seatX ?? targetSeatGuest.x;
+                const seatSY = targetSeatGuest.seatY ?? targetSeatGuest.y;
+                const awaySign = seatTbl && seatSY < seatTbl.wy ? -1 : 1;
+                const standTargetX = seatSX + 12;
+                const standTargetY = seatSY + awaySign * 14;
                 const rdx = standTargetX - guest.x;
                 const rdy = standTargetY - guest.y;
                 const rDist = Math.hypot(rdx, rdy);
@@ -3333,7 +3509,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // 1. Hatzar HaMalka Dark Polished Slate Floor, Purple Light Wash Pools & Golden Glass Chuppah Runway
       const floorSize = 440;
       const tileStep = 55;
-      drawHatzarHaMalkaFloor(ctx, originX, originY, floorSize, tileStep, discoBeatPhase);
+      drawHallFloor(ctx, originX, originY, floorSize, tileStep);
+      drawGoboProjections(ctx, originX, originY, discoBeatPhase / 2.8);
+      drawChuppahRunway(ctx, originX, originY, discoBeatPhase);
 
       // Rose petals & metallic confetti on the floor
       for (const petal of floorPetals) {
@@ -3345,7 +3523,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
       // 2. Hatzar HaMalka Wood-Slat & LED Walls, Mezzanine Balcony, Giant Rattan Domes, Fairy-Light Curtain & Mirror Spheres
-      drawHatzarHaMalkaWallsAndCeiling(ctx, originX, originY, floorSize, discoBeatPhase);
+      drawHallWalls(ctx, originX, originY, floorSize, discoBeatPhase / 2.8);
 
       // ========================================================================
       // DEPTH SORTED SCENE DRAWABLES (Olive Tree, DJ Stage, Bar, Chuppah, Tables, Workstation, Board, Guests, Player)
@@ -3356,22 +3534,49 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
       const drawables: Drawable[] = [];
 
-      // 2A-1. Courtyard Ancient Olive Tree in White Planter with Wrap-Around Bench & Macramé Parasol (photos 1 & 2)
-      const oliveIso = worldToIso(-245, -235);
-      drawables.push({
-        sortY: oliveIso.y,
-        draw: () => {
-          drawPixelOliveTreeAndMacrame(ctx, originX, originY, -245, -235, discoBeatPhase);
-        },
-      });
+      const hallT = discoBeatPhase / 2.8;
 
-      // 2A-2. Curved Ribbed-Wood Cocktail Bar with Purple LED Underglow & Hanging Glass Rack (photo 10)
-      const barIso = worldToIso(255, -105);
+      // 2A-1. Lounge: uplit white-trunk tree on a wooden deck + curved velvet sofa, armchairs, rug
+      const treeIso = worldToIso(LOUNGE.treeX, LOUNGE.treeY);
       drawables.push({
-        sortY: barIso.y,
-        draw: () => {
-          drawPixelRibbedWoodBar(ctx, originX, originY, 255, -105, discoBeatPhase);
-        },
+        sortY: treeIso.y,
+        draw: () => drawUplitTree(ctx, originX, originY, LOUNGE.treeX, LOUNGE.treeY, hallT),
+      });
+      const loungeIso = worldToIso(LOUNGE.sofaX, LOUNGE.sofaY);
+      drawables.push({
+        sortY: loungeIso.y - 20,
+        draw: () => drawVelvetLounge(ctx, originX, originY, LOUNGE.sofaX, LOUNGE.sofaY),
+      });
+      for (const rt of RATTAN_HIGH_TABLES) {
+        const rtIso = worldToIso(rt.x, rt.y);
+        drawables.push({
+          sortY: rtIso.y,
+          draw: () => drawRattanHighTable(ctx, originX, originY, rt.x, rt.y),
+        });
+      }
+
+      // 2A-2. Square black island bar: counter split into pieces for depth, backlit bottle tower,
+      // and the bartender crew (1 man : 3 women, all in black) working inside the ring
+      for (const piece of getIslandBarPieces()) {
+        const pIso = worldToIso(piece.wx + piece.w / 2, piece.wy + piece.d / 2);
+        drawables.push({
+          sortY: pIso.y,
+          draw: () => drawIslandBarPiece(ctx, originX, originY, piece, drawIsoBox, hallT),
+        });
+      }
+      const towerIso = worldToIso(ISLAND_BAR.cx, ISLAND_BAR.cy);
+      drawables.push({
+        sortY: towerIso.y,
+        draw: () => drawBarShelfTower(ctx, originX, originY, drawIsoBox, hallT),
+      });
+      BARTENDER_LOOKS.forEach((look, bi) => {
+        const pose = getBartenderPose(bi, hallT);
+        const bIso = worldToIso(pose.x, pose.y);
+        drawables.push({
+          sortY: bIso.y,
+          draw: () =>
+            drawBartender(ctx, originX + bIso.x, originY + bIso.y, look, pose.action, hallT, bi + 1),
+        });
       });
 
       // 2A-3. Raised DJ Stage, Giant Animated LED Video Wall & Cyan LED Booth (photos 6 & 13)
@@ -3417,27 +3622,85 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         },
       });
 
-      // 2B. Hatzar HaMalka Banquet Tables with Black Chiavari Chairs, Tropical Fan-Palm Fronds & Gold Candelabras (photos 4, 11, 12, 13)
+      // 2B. Long banquet tables (white cloth, flower ball + crystal candelabra), ghost chairs on empty seats
       for (const tbl of BANQUET_TABLES) {
         const tIso = worldToIso(tbl.wx, tbl.wy);
         drawables.push({
           sortY: tIso.y,
-          draw: () => {
-            const sx = originX + tIso.x;
-            const sy = originY + tIso.y;
-            const prefFrame =
-              MAGNET_FRAMES[getPreferredFrameForGuest({ role: 'table_guest', tableId: tbl.id })];
-            drawPixelHatzarBanquetTable(
-              ctx,
-              sx,
-              sy,
-              tbl.id,
-              tbl.name,
-              prefFrame.borderColor,
-              prefFrame.icon,
-              discoBeatPhase
-            );
-          },
+          draw: () =>
+            drawLongBanquetTable(ctx, originX, originY, tbl.wx, tbl.wy, drawIsoBox, {
+              tableNumber: tbl.id * 7 + 1,
+              t: hallT,
+            }),
+        });
+        for (const seat of LONG_TABLE_SEATS) {
+          const sxw = tbl.wx + seat.dx;
+          const syw = tbl.wy + seat.dy;
+          const occupied = guests.some(
+            (g) => g.isSeated && Math.abs(g.x - sxw) < 5 && Math.abs(g.y - syw) < 5
+          );
+          if (occupied) continue;
+          const cIso = worldToIso(sxw, syw);
+          drawables.push({
+            sortY: cIso.y - 0.1,
+            draw: () => drawGhostChair(ctx, originX + cIso.x, originY + cIso.y, seat.dir === 'SW'),
+          });
+        }
+      }
+      // Decorative full tables to give the hall its real scale (static seated guests)
+      {
+        const outfitsDecor = characterConfigRef.current.guestOutfits;
+        DECOR_TABLES.forEach((dt, di) => {
+          const dIso = worldToIso(dt.x, dt.y);
+          drawables.push({
+            sortY: dIso.y,
+            draw: () =>
+              drawLongBanquetTable(ctx, originX, originY, dt.x, dt.y, drawIsoBox, {
+                tableNumber: dt.number,
+                t: hallT,
+              }),
+          });
+          LONG_TABLE_SEATS.forEach((seat, si) => {
+            const gx = dt.x + seat.dx;
+            const gy = dt.y + seat.dy;
+            const gIso = worldToIso(gx, gy);
+            const style = outfitsDecor[(di * 5 + si * 3) % outfitsDecor.length];
+            const dummy: WeddingGuestActor = {
+              id: 500 + di * 10 + si,
+              role: 'table_guest',
+              outfitIndex: 0,
+              archetype: 'swarmer',
+              x: gx,
+              y: gy,
+              homeX: gx,
+              homeY: gy,
+              vx: 0,
+              vy: 0,
+              speed: 0,
+              dancePhase: 0,
+              danceTempo: 1,
+              danceMove: si % 2 === 0 ? 'eating' : 'toasting',
+              direction: seat.dir as IsoDirection,
+              strideDist: hallT * 6 + si,
+              outfitColor: style?.outfit ?? '#334155',
+              hairColor: style?.hair ?? '#1c1410',
+              isDress: style?.isDress ?? false,
+              hatType: 'none',
+              hasMagnet: false,
+              photoCount: 0,
+              celebrateTimer: 0,
+              hitFlashTimer: 0,
+              wantsPhotoTimer: 0,
+              speechBubbleText: null,
+              poseTimer: 0,
+              isSeated: true,
+            };
+            drawables.push({
+              sortY: gIso.y,
+              draw: () =>
+                drawWeddingGuestSprite(originX + gIso.x, originY + gIso.y, dummy, dummy.strideDist),
+            });
+          });
         });
       }
 
@@ -4463,16 +4726,22 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               : null,
           };
 
+          const leanAngle =
+            guest.guestActivity === 'bar' && guest.atBarArrived && (guest.barSpotIdx ?? 0) < 3 ? 0.14 : 0;
           drawables.push({
             sortY: eIso.y,
             draw: () => {
-              drawWeddingGuestSprite(
-                originX + eIso.x,
-                originY + eIso.y,
-                activeGuest,
-                guest.strideDist,
-                1
-              );
+              const gx = originX + eIso.x;
+              const gy = originY + eIso.y;
+              if (leanAngle) {
+                // Leaning on the counter (pivot at the feet)
+                ctx.save();
+                ctx.translate(gx, gy);
+                ctx.rotate(leanAngle);
+                ctx.translate(-gx, -gy);
+              }
+              drawWeddingGuestSprite(gx, gy, activeGuest, guest.strideDist, 1);
+              if (leanAngle) ctx.restore();
             },
           });
         }
@@ -4492,50 +4761,54 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               ctx.ellipse(sx, sy, 12, 6, 0, 0, Math.PI * 2);
               ctx.fill();
 
-              ctx.fillStyle = '#0f172a';
+              // Black trousers + black shirt + khaki apron (like the venue's waiters)
+              ctx.fillStyle = '#0b0b0e';
               ctx.fillRect(sx - 6, sy - 18 + bob * 0.3, 5, 18);
               ctx.fillRect(sx + 1, sy - 18 - bob * 0.3, 5, 18);
-
-              ctx.fillStyle = '#f8fafc';
+              ctx.fillStyle = '#121216';
               ctx.fillRect(sx - 9, sy - 38 + bob, 18, 20);
-              ctx.fillStyle = '#1e293b';
-              ctx.fillRect(sx - 9, sy - 38 + bob, 5, 20);
-              ctx.fillRect(sx + 4, sy - 38 + bob, 5, 20);
-              ctx.fillStyle = '#ef4444';
-              ctx.fillRect(sx - 2, sy - 36 + bob, 4, 3);
+              ctx.fillStyle = '#a1885f';
+              ctx.fillRect(sx - 7, sy - 24 + bob, 14, 12);
+              ctx.fillStyle = 'rgba(0,0,0,0.25)';
+              ctx.fillRect(sx - 7, sy - 24 + bob, 14, 1.5);
 
-              ctx.fillStyle = '#eab696';
+              ctx.fillStyle = '#d6a27c';
               ctx.strokeStyle = '#0f172a';
-              ctx.lineWidth = 1.6;
+              ctx.lineWidth = 1.4;
               ctx.beginPath();
-              ctx.arc(sx, sy - 46 + bob, 7.5, 0, Math.PI * 2);
+              ctx.arc(sx, sy - 46 + bob, 7.2, 0, Math.PI * 2);
               ctx.fill();
               ctx.stroke();
-
-              // Waiter hair
               ctx.fillStyle = '#1e1612';
               ctx.beginPath();
-              ctx.arc(sx, sy - 48 + bob, 7.5, Math.PI, Math.PI * 2);
+              ctx.arc(sx, sy - 48 + bob, 7.4, Math.PI, Math.PI * 2);
               ctx.fill();
 
-              // Raised Silver Serving Tray with Champagne or Gourmet Cloche Platter
-              ctx.fillStyle = '#e2e8f0';
-              ctx.strokeStyle = '#334155';
-              ctx.lineWidth = 1.5;
+              // Arm up to the tray (only while carrying), otherwise at the side
+              ctx.strokeStyle = '#121216';
+              ctx.lineWidth = 3;
               ctx.beginPath();
-              ctx.ellipse(sx + 14, sy - 42 + bob, 11.5, 4.8, 0, 0, Math.PI * 2);
-              ctx.fill();
+              ctx.moveTo(sx + 8, sy - 34 + bob);
+              ctx.lineTo(wActor.carrying ? sx + 13 : sx + 10, wActor.carrying ? sy - 41 + bob : sy - 22 + bob);
               ctx.stroke();
 
-              if (wActor.trayItem === 'champagne') {
-                ctx.fillStyle = '#fef08a';
-                ctx.fillRect(sx + 10, sy - 50 + bob, 3, 7);
-                ctx.fillRect(sx + 15, sy - 50 + bob, 3, 7);
-              } else {
-                ctx.fillStyle = '#94a3b8';
+              if (wActor.carrying) {
+                ctx.fillStyle = '#cbd5e1';
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 1.2;
                 ctx.beginPath();
-                ctx.arc(sx + 14, sy - 44 + bob, 6, Math.PI, 0);
+                ctx.ellipse(sx + 14, sy - 42 + bob, 10, 4.2, 0, 0, Math.PI * 2);
                 ctx.fill();
+                ctx.stroke();
+                // Three drinks on the tray
+                const cols = ['rgba(190,18,60,0.85)', 'rgba(254,240,138,0.9)', 'rgba(244,114,182,0.85)'];
+                cols.forEach((c, k) => {
+                  ctx.fillStyle = c;
+                  ctx.fillRect(sx + 8 + k * 4.5, sy - 50 + bob, 2.6, 5);
+                  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                  ctx.lineWidth = 0.6;
+                  ctx.strokeRect(sx + 8 + k * 4.5, sy - 50 + bob, 2.6, 5);
+                });
               }
             },
           });
@@ -4583,46 +4856,42 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       for (const d of drawables) d.draw();
 
       // Ceiling-hung chandeliers, mirror spheres & fairy-light curtain always render above floor actors
-      drawHatzarHaMalkaCeilingFixtures(ctx, originX, originY, discoBeatPhase);
+      drawHallCeiling(ctx, originX, originY, discoBeatPhase / 2.8);
 
       // ========================================================================
       // VOLUMETRIC MOVING-HEAD CONCERT SPOTLIGHTS & LASER BEAMS (Section 1)
       // ========================================================================
       {
         ctx.save();
-        const beamConfigs = [
-          { srcX: -120, srcY: -255, color: 'rgba(56, 189, 248, 0.14)', speed: 0.9, phase: 0 },
-          { srcX: -55, srcY: -255, color: 'rgba(244, 63, 94, 0.13)', speed: -1.1, phase: 1.8 },
-          { srcX: 35, srcY: -235, color: 'rgba(251, 191, 36, 0.13)', speed: 0.75, phase: 3.2 },
-          { srcX: -195, srcY: -180, color: 'rgba(168, 85, 247, 0.13)', speed: 1.05, phase: 4.7 },
-        ];
-        for (const bm of beamConfigs) {
-          const srcIso = worldToIso(bm.srcX, bm.srcY, 155);
-          const sweepX = Math.sin(discoBeatPhase * bm.speed + bm.phase) * 165;
-          const sweepY = Math.cos(discoBeatPhase * bm.speed * 0.7 + bm.phase) * 125;
-          const dstIso = worldToIso(sweepX, sweepY, 0);
-
-          const sx = originX + srcIso.x;
-          const sy = originY + srcIso.y;
-          const dx = originX + dstIso.x;
-          const dy = originY + dstIso.y;
-
+        // Thin blue / warm-yellow beams from the truss moving heads, sweeping the dance floor
+        ctx.globalCompositeOperation = 'lighter';
+        const bt = discoBeatPhase / 2.8;
+        for (const head of movingHeads) {
+          const speed = 0.35 + (head.phase % 1) * 0.3;
+          const tx = Math.sin(bt * speed + head.phase) * 150;
+          const ty = Math.cos(bt * speed * 0.8 + head.phase * 1.3) * 120;
+          const src = worldToIso(head.x, head.y, head.z);
+          const dst = worldToIso(tx, ty, 0);
+          const sx = originX + src.x;
+          const sy = originY + src.y;
+          const dx = originX + dst.x;
+          const dy = originY + dst.y;
+          const col = head.warm ? '255, 214, 120' : '150, 175, 255';
           const bGrad = ctx.createLinearGradient(sx, sy, dx, dy);
-          bGrad.addColorStop(0, bm.color);
-          bGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          bGrad.addColorStop(0, `rgba(${col}, 0.32)`);
+          bGrad.addColorStop(1, `rgba(${col}, 0.05)`);
           ctx.fillStyle = bGrad;
           ctx.beginPath();
-          ctx.moveTo(sx - 4, sy);
-          ctx.lineTo(sx + 4, sy);
-          ctx.lineTo(dx + 46, dy);
-          ctx.lineTo(dx - 46, dy);
+          ctx.moveTo(sx - 1.5, sy);
+          ctx.lineTo(sx + 1.5, sy);
+          ctx.lineTo(dx + 9, dy);
+          ctx.lineTo(dx - 9, dy);
           ctx.closePath();
           ctx.fill();
-
-          // Soft Spotlight Pool on Floor
-          ctx.fillStyle = bm.color;
+          // Small hot spot where the beam hits the floor
+          ctx.fillStyle = `rgba(${col}, 0.22)`;
           ctx.beginPath();
-          ctx.ellipse(dx, dy, 44, 22, 0, 0, Math.PI * 2);
+          ctx.ellipse(dx, dy, 12, 6, 0, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.restore();

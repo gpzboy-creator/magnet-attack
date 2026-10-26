@@ -8,6 +8,7 @@ import {
   ISO_ANIM_STATES,
 } from './spriteExtractor.ts';
 import {
+  moveTowardPoint,
   getCuttingAnimFrame,
   calculateCardTransferTiming,
   chooseWorkstationAction,
@@ -36,7 +37,6 @@ import {
   doesShotCountForVipEvent,
   getMaxCameraCapacity,
   calculateBatchPrintBonus,
-  stepWaiterPatrol,
   getUpgradeCost,
   getWorkstationSpeedMultiplier,
   getPreferredFrameForGuest,
@@ -350,23 +350,6 @@ test('VIP moments, SD card capacity/batch bonus, roaming waiters, equipment upgr
   assert.equal(calculateBatchPrintBonus(8, 12).multiplier, 1.5);
   assert.equal(calculateBatchPrintBonus(12, 12).multiplier, 2.0);
 
-  // Waiter patrol step
-  const wStep = stepWaiterPatrol(
-    {
-      id: 1,
-      x: 0,
-      y: 0,
-      waypointIdx: 0,
-      waypoints: [{ x: 100, y: 0 }, { x: 0, y: 0 }],
-      speed: 50,
-      trayItem: 'champagne',
-      bumpCooldown: 0.5,
-    },
-    0.1
-  );
-  assert.ok(wStep.nextWaiter.x > 0);
-  assert.ok(Math.abs(wStep.nextWaiter.bumpCooldown - 0.4) < 1e-6);
-
   // 3. Equipment upgrades & speed multiplier
   assert.equal(getUpgradeCost('turbo_station', 0), 500);
   assert.equal(getUpgradeCost('turbo_station', 1), 850);
@@ -624,4 +607,13 @@ test('cutting animation hits the full-cut pose when the blade slices', () => {
   assert.equal(getCuttingAnimFrame(0.7, true), 4);
   assert.equal(getCuttingAnimFrame(0.95, true), 0);
   assert.equal(getCuttingAnimFrame(0.5, false), 5);
+});
+
+test('moveTowardPoint steps toward the target and reports arrival', () => {
+  const a = moveTowardPoint({ x: 0, y: 0 }, { x: 100, y: 0 }, 50, 0.5);
+  assert.equal(a.arrived, false);
+  assert.ok(Math.abs(a.x - 25) < 1e-9);
+  const b = moveTowardPoint({ x: 90, y: 0 }, { x: 100, y: 0 }, 50, 0.5);
+  assert.equal(b.arrived, true);
+  assert.ok(b.x > 90 && b.x <= 100);
 });

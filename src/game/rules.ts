@@ -640,52 +640,6 @@ export interface WaiterActorState {
   bumpCooldown: number;
 }
 
-export function stepWaiterPatrol(
-  waiter: WaiterActorState,
-  dt: number
-): { nextWaiter: WaiterActorState; velocity: Vec2 } {
-  const safeDt = Math.max(0, dt);
-  const bumpCooldown = Math.max(0, waiter.bumpCooldown - safeDt);
-  if (waiter.waypoints.length === 0) {
-    return {
-      nextWaiter: { ...waiter, bumpCooldown },
-      velocity: { x: 0, y: 0 },
-    };
-  }
-
-  const target = waiter.waypoints[waiter.waypointIdx % waiter.waypoints.length];
-  const dx = target.x - waiter.x;
-  const dy = target.y - waiter.y;
-  const dist = Math.hypot(dx, dy);
-
-  if (dist < 10) {
-    const nextIdx = (waiter.waypointIdx + 1) % waiter.waypoints.length;
-    return {
-      nextWaiter: {
-        ...waiter,
-        waypointIdx: nextIdx,
-        bumpCooldown,
-      },
-      velocity: { x: 0, y: 0 },
-    };
-  }
-
-  const vx = (dx / dist) * waiter.speed;
-  const vy = (dy / dist) * waiter.speed;
-  return {
-    nextWaiter: {
-      ...waiter,
-      x: waiter.x + vx * safeDt,
-      y: waiter.y + vy * safeDt,
-      bumpCooldown,
-    },
-    velocity: { x: vx, y: vy },
-  };
-}
-
-// ============================================================================
-// 3. EQUIPMENT UPGRADES (שדרוגי ציוד לעמדה ולצלם)
-// ============================================================================
 export type UpgradeId = 'turbo_station' | 'pro_sdcard' | 'sneakers';
 
 export interface PhotographerUpgradeLevels {
@@ -1372,4 +1326,28 @@ export function getCuttingAnimFrame(sheetProgress: number, isCutting: boolean): 
   if (p < 0.6) return 3; // full cut
   if (p < 0.84) return 4; // lever back up
   return 0; // slide the next sheet in
+}
+
+// ============================================================================
+// SIMPLE STEERING (waiters / bar-goers)
+// ============================================================================
+
+/** Moves a point toward a target at `speed` units/sec; reports arrival within `arriveRadius`. */
+export function moveTowardPoint(
+  pos: Vec2,
+  target: Vec2,
+  speed: number,
+  dt: number,
+  arriveRadius = 6
+): { x: number; y: number; arrived: boolean } {
+  const dx = target.x - pos.x;
+  const dy = target.y - pos.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist <= arriveRadius) return { x: pos.x, y: pos.y, arrived: true };
+  const step = Math.max(0, speed) * Math.max(0, dt);
+  if (step >= dist - arriveRadius) {
+    const k = (dist - arriveRadius * 0.5) / dist;
+    return { x: pos.x + dx * k, y: pos.y + dy * k, arrived: true };
+  }
+  return { x: pos.x + (dx / dist) * step, y: pos.y + (dy / dist) * step, arrived: false };
 }
