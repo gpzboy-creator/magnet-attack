@@ -59,6 +59,11 @@ import {
 } from '../game/rules';
 import { FlashEngine, FlashProjector } from '../game/flashEngine';
 import {
+  SEATED_FRAME,
+  SeatedSpriteSheet,
+  loadSeatedPhotographerSheet,
+} from '../game/seatedSprite';
+import {
   drawPixelGuillotineCutter,
   drawPixelLaptop,
   drawPixelThermalPrinter,
@@ -606,6 +611,13 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     );
     let projectileCursor = 0;
 
+    // Seated photographer strip (typing at the workstation, no camera in hand)
+    let seatedSheet: SeatedSpriteSheet | null = null;
+    let seatedSheetDisposed = false;
+    loadSeatedPhotographerSheet().then((sheetResult) => {
+      if (!seatedSheetDisposed) seatedSheet = sheetResult;
+    });
+
     // ======================================================================
     // CAMERA FLASH ENGINE — pooled light cones + lens flares with hit-test hooks
     // ======================================================================
@@ -771,6 +783,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // Screen-space offset of the camera lens from the feet, refreshed by the renderer each frame
       lensOffsetX: 0,
       lensOffsetY: -70,
+      // Seconds seated at the workstation with no job running (drives the "glance at the party" frame)
+      seatedIdleTime: 0,
       strideDist: 0,
       direction: 'NE' as IsoDirection,
       animState: 'idle' as IsoAnimState,
@@ -2026,6 +2040,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         player.transferAnimTimer = Math.max(0, player.transferAnimTimer - dt);
         if (player.transferAnimTimer === 0) finishCardTransfer();
       }
+      const stationJobRunning =
+        player.transferAnimTimer > 0 || player.printerAnimTimer > 0 || player.cutterAnimTimer > 0;
+      player.seatedIdleTime =
+        player.isSeatedAtStation && !stationJobRunning ? player.seatedIdleTime + dt : 0;
       if (player.cutterAnimTimer > 0) {
         player.cutterAnimTimer = Math.max(0, player.cutterAnimTimer - dt);
       }
@@ -2373,12 +2391,17 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.stationFeedbackTimer = 2;
           }
 
-          if (wantsShoot && player.shootCooldown <= 0 && player.cameraOnDesk) {
-            // No camera in hand: it's on the workstation desk with the card in the laptop
+          if (
+            wantsShoot &&
+            player.shootCooldown <= 0 &&
+            (player.cameraOnDesk || player.isSeatedAtStation)
+          ) {
+            // No shooting from the chair (hands are on the laptop) or while the camera is on the desk
             player.shootCooldown = 0.6;
             sound.playDanceBump();
-            player.stationFeedbackText =
-              player.transferAnimTimer > 0
+            player.stationFeedbackText = !player.cameraOnDesk
+              ? '🪑 אתה יושב בעמדה ועובד על המחשב — קום מהכסא כדי לצלם'
+              : player.transferAnimTimer > 0
                 ? `📷 המצלמה על השולחן — ההעברה למחשב עוד לא הסתיימה (${player.transferAnimTimer.toFixed(1)} שנ')`
                 : player.isSeatedAtStation
                 ? '📷 המצלמה על השולחן — קום מהכסא כדי לקחת אותה'
@@ -4192,23 +4215,58 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           // Back-facing shots fire INTO the scene: drawn UNDER the sprite so the body occludes the source
           flashEngine.render(ctx, projectToScreen, 'behind');
 
-          // Draw the sprite around its foot anchor so tilt pivots at the feet
-          ctx.save();
-          ctx.translate(screenFootX, screenFootY + pose.bobY);
-          ctx.rotate(pose.tilt);
-          ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(
-            sheet,
-            frame.x,
-            frame.y,
-            frame.width,
-            frame.height,
-            dx,
-            dy,
-            dw,
-            dh
-          );
-          ctx.restore();
+          const seatedStrip = isSeated ? seatedSheet : null;
+          if (seatedStrip) {
+            // SEATED AT THE WORKSTATION: dedicated strip (no camera in hand).
+            // Typing while a transfer/print/cut runs, idle otherwise, and after a few quiet
+            // seconds he turns to glance at the party.
+            const jobRunning =
+              player.transferAnimTimer > 0 || player.printerAnimTimer > 0 || player.cutterAnimTimer > 0;
+            const frameIdx = jobRunning
+              ? Math.floor(discoBeatPhase * 3.2) % 2 === 0
+                ? SEATED_FRAME.typingA
+                : SEATED_FRAME.typingB
+              : player.seatedIdleTime > 2.5
+              ? SEATED_FRAME.lookAtParty
+              : SEATED_FRAME.idle;
+            const sf = seatedStrip.frames[frameIdx];
+            // Size relative to the standing sprite: a seated adult is ~78% of standing height
+            const standingH = frame.height * cellNorm * scale * hRatio;
+            const sh = standingH * 0.78 * sY;
+            const sw = (sf.width / sf.height) * sh * wRatio * sX;
+            ctx.save();
+            ctx.imageSmoothingEnabled = true; // downscaled from a large source → smooth to avoid shimmer
+            ctx.drawImage(
+              seatedStrip.canvas,
+              sf.x,
+              sf.y,
+              sf.width,
+              sf.height,
+              screenFootX - sf.anchorX * sw,
+              screenFootY - sf.anchorY * sh,
+              sw,
+              sh
+            );
+            ctx.restore();
+          } else {
+            // Draw the sprite around its foot anchor so tilt pivots at the feet
+            ctx.save();
+            ctx.translate(screenFootX, screenFootY + pose.bobY);
+            ctx.rotate(pose.tilt);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(
+              sheet,
+              frame.x,
+              frame.y,
+              frame.width,
+              frame.height,
+              dx,
+              dy,
+              dw,
+              dh
+            );
+            ctx.restore();
+          }
 
           // Front/side-facing: the lens is between the body and the viewer → flash renders ON TOP
           flashEngine.render(ctx, projectToScreen, 'front');
@@ -4792,6 +4850,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     return () => {
       clearAllTimeouts();
       cancelAnimationFrame(rafId);
+      seatedSheetDisposed = true;
       ro.disconnect();
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
