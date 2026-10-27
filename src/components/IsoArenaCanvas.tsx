@@ -524,12 +524,16 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
     let viewW = window.innerWidth;
     let viewH = window.innerHeight;
+    // Render at the screen's real pixel density (capped at 2x for performance) so nothing gets
+    // upscaled and blurred by the browser on retina / phone screens. All drawing stays in CSS pixels.
+    let dpr = 1;
     const updateSize = () => {
       if (!canvas) return;
       viewW = window.innerWidth;
       viewH = window.innerHeight;
-      canvas.width = viewW;
-      canvas.height = viewH;
+      dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      canvas.width = Math.round(viewW * dpr);
+      canvas.height = Math.round(viewH * dpr);
     };
     updateSize();
     const ro = new ResizeObserver(updateSize);
@@ -1950,7 +1954,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     ) => {
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.translate(screenX, screenY);
+      ctx.translate(Math.round(screenX), Math.round(screenY));
       const gScale = characterConfigRef.current.guestScale || 1;
       ctx.scale(gScale, gScale);
 
@@ -2010,8 +2014,20 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.rotate(grooveSway * 0.012);
         ctx.translate(0, -lift);
         ctx.scale(castHit.flip ? -1 : 1, squash);
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(castSheet.canvas, fr.x, fr.y, fr.width, fr.height, -fr.anchorX * dw, -dh, dw, dh);
+        // Crisp pixels when the sprite is enlarged on screen; smooth only when it's shrunk
+        const screenScale = Math.abs(ctx.getTransform().a) * k;
+        ctx.imageSmoothingEnabled = screenScale < 1;
+        ctx.drawImage(
+          castSheet.canvas,
+          fr.x,
+          fr.y,
+          fr.width,
+          fr.height,
+          Math.round(-fr.anchorX * dw),
+          Math.round(-dh),
+          Math.round(dw),
+          Math.round(dh)
+        );
         ctx.restore();
         headX = grooveSway * 0.6;
         headY = -look.height + 9 - lift;
@@ -3895,6 +3911,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // ========================================================================
       // RENDER ISOMETRIC "חצר המלכה" (HATZAR HAMALKA) PIXEL-ART VENUE & DANCE FLOOR
       // ========================================================================
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = '#0f0b18';
       ctx.fillRect(0, 0, viewW, viewH);
 
