@@ -1666,6 +1666,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       { x: 30, y: -40 },
     ];
     let coupleRoamIdx = 0;
+    /** True while the bride and groom are mingling separately. */
+    let coupleSplit = false;
+    /** Chance that the next stop is a short separate mingle (they rejoin right after). */
+    const COUPLE_SPLIT_CHANCE = 0.3;
     const isCoupleAtChuppah = () =>
       vipCouple.length === 2 &&
       vipEvent?.kind === 'chuppah_kiss' &&
@@ -1676,12 +1680,33 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const [bride, groom] = vipCouple;
       if (!bride || !groom) return;
       const chuppahMoment = Boolean(vipEvent && vipEvent.kind === 'chuppah_kiss' && vipEvent.remainingSec > 0);
+      if (chuppahMoment) coupleSplit = false; // the big moments are always together
       bride.vipTimer = (bride.vipTimer ?? 0) - dt;
       if (!chuppahMoment && bride.vipTimer <= 0) {
         // Next stop: alternate dance-floor spots with visits to a banquet table or the bar
         coupleRoamIdx++;
         let tx: number;
         let ty: number;
+        // Mostly together; now and then they mingle separately for a short while
+        // (never twice in a row, and always together for the big moments)
+        const wasSplit = coupleSplit;
+        coupleSplit = !wasSplit && coupleRoamIdx > 1 && Math.random() < COUPLE_SPLIT_CHANCE;
+        if (coupleSplit) {
+          const tbl = BANQUET_TABLES[Math.floor(Math.random() * BANQUET_TABLES.length)];
+          const bar = BAR_GUEST_SPOTS[Math.floor(Math.random() * BAR_GUEST_SPOTS.length)];
+          tx = tbl.wx + 30;
+          ty = tbl.wy + 26;
+          groom.vipTargetX = bar.x + 14;
+          groom.vipTargetY = bar.y + 18;
+          bride.vipTargetX = tx;
+          bride.vipTargetY = ty;
+          bride.vipTimer = 9 + Math.random() * 5;
+          bride.speechBubbleText = '👰 קופצת לחברות!';
+          bride.wantsPhotoTimer = 2;
+          groom.speechBubbleText = '🤵 לחיים עם החבר׳ה!';
+          groom.wantsPhotoTimer = 2;
+          return;
+        }
         if (coupleRoamIdx % 3 === 1) {
           const tbl = BANQUET_TABLES[Math.floor(Math.random() * BANQUET_TABLES.length)];
           tx = tbl.wx + 30;
@@ -1715,6 +1740,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         }
         const target = chuppahMoment
           ? COUPLE_CHUPPAH_SPOTS[i]
+          : coupleSplit && i === 1
+          ? { x: groom.vipTargetX ?? 0, y: groom.vipTargetY ?? 0 }
           : { x: (bride.vipTargetX ?? 0) - i * 15, y: (bride.vipTargetY ?? 0) - i * 6 };
         const mv = moveTowardPoint(m, target, 58, dt, 3);
         const stepLen = Math.hypot(mv.x - m.x, mv.y - m.y);
