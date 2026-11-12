@@ -1,5 +1,6 @@
 export type IsoDirection = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
-export type IsoAnimState = 'idle' | 'walk_1' | 'walk_2' | 'shoot';
+/** walk_3 / walk_4 exist only in sheets with a 4-frame walk cycle (contact, passing, contact, passing). */
+export type IsoAnimState = 'idle' | 'walk_1' | 'walk_2' | 'shoot' | 'walk_3' | 'walk_4';
 
 export const ISO_DIRECTIONS: readonly IsoDirection[] = [
   'N',
@@ -340,7 +341,8 @@ export function extractSpriteSheetAtlas(
   sheetHeight: number,
   columns = 4,
   rows = 8,
-  alphaThreshold = 16
+  alphaThreshold = 16,
+  states: readonly IsoAnimState[] = ISO_ANIM_STATES
 ): SpriteAtlasSchema {
   const cellWidth = Math.floor(sheetWidth / columns);
   const cellHeight = Math.floor(sheetHeight / rows);
@@ -349,7 +351,7 @@ export function extractSpriteSheetAtlas(
   for (let r = 0; r < rows; r++) {
     const direction = ISO_DIRECTIONS[r % ISO_DIRECTIONS.length];
     for (let c = 0; c < columns; c++) {
-      const state = ISO_ANIM_STATES[c % ISO_ANIM_STATES.length];
+      const state = states[c % states.length];
       const cellX = c * cellWidth;
       const cellY = r * cellHeight;
       const extracted = extractCellBoundingBoxAndAnchor(
@@ -1464,8 +1466,10 @@ export function downloadSingleFramePNG(
 export const PHOTOGRAPHER_V2_SHEET_URL = `${import.meta.env?.BASE_URL ?? '/'}assets/aistudio/photographer-v2.png`;
 
 /**
- * Loads a ready-made transparent 4x8 sheet (rows N,NE,E,SE,S,SW,W,NW · cols idle,walk_1,walk_2,shoot)
- * at its native resolution — no resampling, no chroma key — and extracts the atlas.
+ * Loads a ready-made transparent sheet at its native resolution — no resampling, no chroma key.
+ * Rows N,NE,E,SE,S,SW,W,NW · cols idle, walk_1, walk_2, shoot, walk_3, walk_4
+ * (tools/make_photographer_walk.py). Every frame is placed with the head centred in its cell, so the
+ * horizontal anchor is the cell centre: the body stays put while the legs stride.
  */
 export function loadPhotographerSheetPng(url: string = PHOTOGRAPHER_V2_SHEET_URL): Promise<{
   canvas: HTMLCanvasElement;
@@ -1485,7 +1489,14 @@ export function loadPhotographerSheetPng(url: string = PHOTOGRAPHER_V2_SHEET_URL
         if (!ctx) return resolve(null);
         ctx.drawImage(img, 0, 0);
         const rgba = new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data);
-        const atlas = extractSpriteSheetAtlas(rgba, canvas.width, canvas.height, 4, 8);
+        const states: IsoAnimState[] = ['idle', 'walk_1', 'walk_2', 'shoot', 'walk_3', 'walk_4'];
+        const cols = Math.max(1, Math.round(canvas.width / (canvas.height / 8)));
+        const atlas = extractSpriteSheetAtlas(rgba, canvas.width, canvas.height, cols, 8, 16, states);
+        const cellW = canvas.width / cols;
+        for (const f of atlas.frames) {
+          const cellCenterX = (f.cellCol + 0.5) * cellW;
+          f.anchorX = Math.max(0, Math.min(1, (cellCenterX - f.x) / Math.max(1, f.width)));
+        }
         resolve({ canvas, rgba, atlas });
       } catch {
         resolve(null);

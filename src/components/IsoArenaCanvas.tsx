@@ -3083,8 +3083,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           if (player.shootAnimTimer > 0) {
             player.animState = 'shoot';
           } else if (playerSpeed > 18) {
-            const gaitPhase = Math.floor(player.strideDist / 22) % 2;
-            player.animState = gaitPhase === 0 ? 'walk_1' : 'walk_2';
+            // 4-frame cycle (contact, passing, contact, passing) when the sheet has it, else 2 frames
+            const hasFourFrameWalk = atlasRef.current.frames.some((f) => f.state === 'walk_3');
+            const gaitPhase = Math.floor(player.strideDist / (hasFourFrameWalk ? 15 : 22)) % (hasFourFrameWalk ? 4 : 2);
+            player.animState = (['walk_1', 'walk_2', 'walk_3', 'walk_4'] as const)[gaitPhase];
           } else {
             player.animState = 'idle';
           }
