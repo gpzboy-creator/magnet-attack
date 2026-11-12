@@ -1460,6 +1460,43 @@ export function downloadSingleFramePNG(
   document.body.removeChild(link);
 }
 
+/** Current main character: 8-direction PixelLab photographer (transparent PNG, 4x8 cells of 352px). */
+export const PHOTOGRAPHER_V2_SHEET_URL = `${import.meta.env?.BASE_URL ?? '/'}assets/aistudio/photographer-v2.png`;
+
+/**
+ * Loads a ready-made transparent 4x8 sheet (rows N,NE,E,SE,S,SW,W,NW · cols idle,walk_1,walk_2,shoot)
+ * at its native resolution — no resampling, no chroma key — and extracts the atlas.
+ */
+export function loadPhotographerSheetPng(url: string = PHOTOGRAPHER_V2_SHEET_URL): Promise<{
+  canvas: HTMLCanvasElement;
+  rgba: Uint8ClampedArray;
+  atlas: SpriteAtlasSchema;
+} | null> {
+  if (typeof window === 'undefined' || typeof Image === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0);
+        const rgba = new Uint8ClampedArray(ctx.getImageData(0, 0, canvas.width, canvas.height).data);
+        const atlas = extractSpriteSheetAtlas(rgba, canvas.width, canvas.height, 4, 8);
+        resolve({ canvas, rgba, atlas });
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/** Previous main character (Gemini sheet) — kept so it can be restored. */
 export const DEFAULT_UPLOADED_SPRITE_SHEET_URL =
   `${import.meta.env?.BASE_URL ?? '/'}assets/aistudio/Gemini_Generated_Image_vtvrxkvtvrxkvtvr_9de06393.jpg`;
 

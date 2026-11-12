@@ -14,6 +14,7 @@ import {
   generateDefaultIsoSpriteSheetRGBA,
   keyOutChromaGreenRGBA,
   loadUploadedPhotographerSpriteSheet,
+  loadPhotographerSheetPng,
 } from './game/spriteExtractor';
 import { sound } from './game/sound';
 import { GameHud, HudSnapshot } from './components/GameHud';
@@ -68,7 +69,10 @@ export default function App() {
   // Automatically load the attached pixel-art photographer sprite sheet on startup
   useEffect(() => {
     let active = true;
-    loadUploadedPhotographerSpriteSheet().then((loaded) => {
+    // Main character: 8-direction PixelLab photographer; falls back to the previous Gemini sheet
+    loadPhotographerSheetPng()
+      .then((loaded) => (loaded && loaded.atlas.frames.length > 0 ? loaded : loadUploadedPhotographerSpriteSheet()))
+      .then((loaded) => {
       if (active && loaded && loaded.atlas.frames.length > 0) {
         setSheetState(loaded);
       }

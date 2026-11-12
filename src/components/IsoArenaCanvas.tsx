@@ -949,6 +949,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // Game clock for photo timestamps
     let gameClock = 0;
     let lastAimWX = 1;
+    const PHOTOGRAPHER_LENS_HEIGHT = 0.62;
     let lastAimWY = 0;
     // Big floating score labels for whole-frame scoring (Hebrew)
     const frameLabels: Array<{ text: string; sub: string; x: number; y: number; life: number; color: string }> = [];
@@ -4969,7 +4970,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // Camera lens attachment point for the current facing (relative to the feet).
           // Stored on the player so the flash engine anchors its apex exactly at the lens.
-          const lens = getCameraLensScreenOffset(dir, dh);
+          // PixelLab photographer holds the camera at chest height (≈62% of the sprite)
+          const lens = getCameraLensScreenOffset(dir, dh, PHOTOGRAPHER_LENS_HEIGHT);
           player.lensOffsetX = lens.dx + (screenFootX - (originX + worldToIso(worldX, worldY).x));
           player.lensOffsetY = lens.dy + pose.bobY + (screenFootY - (originY + worldToIso(worldX, worldY).y));
 
@@ -5044,7 +5046,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             ctx.save();
             ctx.translate(screenFootX, screenFootY + pose.bobY);
             ctx.rotate(pose.tilt);
-            ctx.imageSmoothingEnabled = false;
+            // Detailed hi-bit source: smooth when it's shrunk on screen, crisp pixels when enlarged
+            ctx.imageSmoothingEnabled = Math.abs(ctx.getTransform().a) * (dh / frame.height) < 1;
             ctx.drawImage(
               sheet,
               frame.x,

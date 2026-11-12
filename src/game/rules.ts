@@ -1202,7 +1202,9 @@ export const ISO_DIRECTION_SCREEN_ANGLE: Record<IsoDirection, number> = {
  */
 export function getCameraLensScreenOffset(
   dir: IsoDirection,
-  spriteHeight: number
+  spriteHeight: number,
+  /** Camera height as a share of the sprite height (0.9 = raised to the face, ~0.6 = held at the chest). */
+  heightRatio = 0.9
 ): { dx: number; dy: number; angle: number; lensInFront: boolean } {
   const angle = ISO_DIRECTION_SCREEN_ANGLE[dir] ?? 0;
   const reach = spriteHeight * 0.13;
@@ -1210,7 +1212,7 @@ export function getCameraLensScreenOffset(
     dx: Math.cos(angle) * reach,
     // Speedlight sits on the camera raised to the face (~90% up the shoot frame);
     // iso foreshortening halves the vertical reach
-    dy: -spriteHeight * 0.9 + Math.sin(angle) * reach * 0.5,
+    dy: -spriteHeight * heightRatio + Math.sin(angle) * reach * 0.5,
     angle,
     lensInFront: !isBackFacingDirection(dir),
   };
