@@ -1463,7 +1463,7 @@ export function downloadSingleFramePNG(
 }
 
 /** Current main character: 8-direction PixelLab photographer (transparent PNG, 4x8 cells of 352px). */
-export const PHOTOGRAPHER_V2_SHEET_URL = `${import.meta.env?.BASE_URL ?? '/'}assets/aistudio/photographer-v2.png`;
+export const PHOTOGRAPHER_V2_SHEET_URL = `${import.meta.env?.BASE_URL ?? '/'}assets/aistudio/photographer-walk4.png`;
 
 /**
  * Loads a ready-made transparent sheet at its native resolution — no resampling, no chroma key.
