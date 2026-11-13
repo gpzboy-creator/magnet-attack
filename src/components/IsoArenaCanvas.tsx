@@ -136,6 +136,16 @@ import {
   wantsToApproachPhotographer,
 } from '../game/guestBehavior';
 import { FrameSubject, MagnetLedger, scoreCaptureExtras, scoreFrame } from '../game/photoScoring';
+import {
+  CAMERA_HOLD_SEC,
+  CAMERA_LOWER_SEC,
+  CAMERA_RAISE_SEC,
+  SHOOT_FLASH_FRAME,
+  SHUTTER_FLASH_SEC,
+  ShootSheet,
+  getShootFrameIndex,
+  loadShootSheet,
+} from '../game/photographerShoot';
 import { HudSnapshot } from './GameHud';
 import type { VirtualInputState } from './MobileControls';
 
@@ -713,6 +723,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       if (!seatedSheetDisposed) cuttingSheet = sheetResult;
     });
     // Wedding cast sheet: bride, groom and guest looks
+    // Photographer "take a photo" animation (raise → eye → flash)
+    let shootSheet: ShootSheet | null = null;
+    loadShootSheet().then((sheetResult) => {
+      if (!seatedSheetDisposed) shootSheet = sheetResult;
+    });
+    let cameraRaise = 0; // 0 = camera at the chest, 1 = at the eye
+    let shutterFlashLeft = 0;
+    let sinceLastShot = 99;
     let castSheet: CastSheet | null = null;
     loadCastSheet().then((sheetResult) => {
       if (!seatedSheetDisposed) castSheet = sheetResult;
@@ -2908,6 +2926,21 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           player.shootCooldown = Math.max(0, player.shootCooldown - simDt);
           player.shootAnimTimer = Math.max(0, player.shootAnimTimer - simDt);
+
+          // Raise the camera to the eye while shooting; lower it a moment after the last shot
+          const cameraFree = !player.cameraOnDesk && !player.isSeatedAtStation && !player.atCutter;
+          const dirHasShootAnim = Boolean(shootSheet?.frames[player.direction]);
+          shutterFlashLeft = Math.max(0, shutterFlashLeft - simDt);
+          sinceLastShot += simDt;
+          if (!cameraFree) {
+            cameraRaise = 0;
+          } else if (wantsShoot) {
+            cameraRaise = Math.min(1, cameraRaise + simDt / CAMERA_RAISE_SEC);
+          } else if (sinceLastShot > CAMERA_HOLD_SEC) {
+            cameraRaise = Math.max(0, cameraRaise - simDt / CAMERA_LOWER_SEC);
+          }
+          // The first shot waits until the camera reaches the eye (only where the animation exists)
+          const cameraReady = !dirHasShootAnim || cameraRaise >= 1;
           flashEngine.update(simDt * 1000);
           flashEngine.updateAnchor('player', player, {
             x: player.lensOffsetX,
@@ -2950,7 +2983,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 ? '📷 המצלמה על השולחן — קום מהכסא כדי לקחת אותה'
                 : '📷 המצלמה נשארה על שולחן העבודה! חזור לעמדה לקחת אותה';
             player.stationFeedbackTimer = 2.2;
-          } else if (wantsShoot && player.shootCooldown <= 0) {
+          } else if (wantsShoot && player.shootCooldown <= 0 && cameraReady) {
             const maxCap = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
             if (player.photosInCamera >= maxCap) {
               player.shootCooldown = 0.35;
@@ -3072,6 +3105,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               }
 
               player.shootAnimTimer = 0.15;
+              shutterFlashLeft = SHUTTER_FLASH_SEC;
+              sinceLastShot = 0;
               player.scaleX = 0.92;
               player.scaleY = 1.08;
             }
@@ -4973,7 +5008,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           // Camera lens attachment point for the current facing (relative to the feet).
           // Stored on the player so the flash engine anchors its apex exactly at the lens.
           // PixelLab photographer holds the camera at chest height (≈62% of the sprite)
-          const lens = getCameraLensScreenOffset(dir, dh, PHOTOGRAPHER_LENS_HEIGHT);
+          const lens = getCameraLensScreenOffset(
+            dir,
+            dh,
+            PHOTOGRAPHER_LENS_HEIGHT + (0.86 - PHOTOGRAPHER_LENS_HEIGHT) * (shootSheet?.frames[dir] ? cameraRaise : 0)
+          );
           player.lensOffsetX = lens.dx + (screenFootX - (originX + worldToIso(worldX, worldY).x));
           player.lensOffsetY = lens.dy + pose.bobY + (screenFootY - (originY + worldToIso(worldX, worldY).y));
 
@@ -5042,6 +5081,21 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               sw,
               sh
             );
+            ctx.restore();
+          } else if (
+            shootSheet &&
+            shootSheet.frames[dir] &&
+            (cameraRaise > 0 || shutterFlashLeft > 0)
+          ) {
+            // TAKING A PHOTO: PixelLab raise → eye → shutter flash animation (same scale and feet as standing)
+            const list = shootSheet.frames[dir]!;
+            const sf = list[getShootFrameIndex(SHOOT_FLASH_FRAME[dir] ?? 4, cameraRaise, shutterFlashLeft)] ?? list[0];
+            const sw = sf.width * cellNorm * scale * wRatio * sX;
+            const sh = sf.height * cellNorm * scale * hRatio * sY;
+            ctx.save();
+            ctx.translate(screenFootX, screenFootY);
+            ctx.imageSmoothingEnabled = Math.abs(ctx.getTransform().a) * (sh / sf.height) < 1;
+            ctx.drawImage(shootSheet.canvas, sf.x, sf.y, sf.width, sf.height, -sf.anchorX * sw, -sf.anchorY * sh, sw, sh);
             ctx.restore();
           } else {
             // Draw the sprite around its foot anchor so tilt pivots at the feet

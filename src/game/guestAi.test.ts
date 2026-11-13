@@ -154,3 +154,12 @@ test('cast: bride & groom looks are never assignable to regular guests', async (
   assert.deepEqual(castViewForDirection('N'), { view: 'back', flip: false });
   assert.deepEqual(castViewForDirection('W'), { view: 'side', flip: true });
 });
+
+test('photographer shoot animation: raise → eye → flash → sparkle', async () => {
+  const { getShootFrameIndex, SHUTTER_FLASH_SEC } = await import('./photographerShoot.ts');
+  assert.equal(getShootFrameIndex(4, 0, 0), 0);
+  assert.equal(getShootFrameIndex(4, 0.5, 0), 2);
+  assert.equal(getShootFrameIndex(4, 1, 0), 3);
+  assert.equal(getShootFrameIndex(4, 1, SHUTTER_FLASH_SEC), 4);
+  assert.equal(getShootFrameIndex(4, 1, SHUTTER_FLASH_SEC * 0.25), 5);
+});
