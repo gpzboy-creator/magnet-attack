@@ -29,6 +29,8 @@ export interface HudSnapshot {
   score: number;
   /** Business reputation ("לידים") from photographing potential couples */
   leads?: number;
+  /** Printing supplies at the station */
+  supplies?: { sheets: number; toner: number; jammed: boolean; carrying: boolean };
   /** Impatient guests currently nagging about their magnet */
   naggingGuests?: number;
   bestScore: number;
@@ -334,6 +336,19 @@ export const GameHud: React.FC<GameHudProps> = ({
           <span className="num" data-testid="hud-photos-on-computer">
             {photosTransferring > 0 ? `${transferRemainingSec.toFixed(1)}s` : photosOnComputer}
           </span>
+        </span>
+      )}
+      {hud.supplies && (
+        <span
+          className={`mhud-pill ${hud.supplies.jammed || hud.supplies.toner < 12 || hud.supplies.sheets < 3 ? 'warn pulse' : ''}`}
+          title="ציוד הדפסה בעמדה: טונר · דפי מגנט"
+          data-testid="hud-supplies"
+        >
+          <span>{hud.supplies.jammed ? '⚠️' : '🖨️'}</span>
+          <span className="num">{hud.supplies.jammed ? 'תקלה' : `${Math.round(hud.supplies.toner)}%`}</span>
+          <span>📄</span>
+          <span className="num">{hud.supplies.sheets}</span>
+          {hud.supplies.carrying && <span>📦</span>}
         </span>
       )}
       {uncutSheetsAtStation > 0 && (

@@ -136,6 +136,21 @@ import {
   wantsToApproachPhotographer,
 } from '../game/guestBehavior';
 import { FrameSubject, MagnetLedger, scoreCaptureExtras, scoreFrame } from '../game/photoScoring';
+import { drawParkingLot, drawParkingSign, drawStreetLamp } from '../game/parkingPixelArt';
+import {
+  CarriedLoad,
+  EMPTY_LOAD,
+  SUPPLY,
+  SupplyState,
+  consumePrint,
+  createSupplies,
+  deliverLoad,
+  describeLoadHe,
+  isEmptyLoad,
+  loadFromCar,
+  planPrint,
+  printBlockMessageHe,
+} from '../game/supplies';
 import {
   CAMERA_HOLD_SEC,
   CAMERA_LOWER_SEC,
@@ -351,6 +366,16 @@ const BOARD_INTERACTION_RADIUS = 85;
 const WORKSTATION_POS = { x: 350, y: 35 };
 const WORKSTATION_CHAIR_POS = { x: WORKSTATION_POS.x - 8, y: WORKSTATION_POS.y + 34 };
 const STATION_INTERACTION_RADIUS = 95;
+
+// ---------------------------------------------------------------------------
+// OUTSIDE: parking lot with the photographer's car (supplies: magnet sheets, toner, repair kit)
+// Reached through the hall's side exit next to the front-right corner.
+// ---------------------------------------------------------------------------
+const HALL_EXIT = { minX: 250, maxX: 480, minY: 205, maxY: 268 }; // walkway from the hall to the lot
+const PARKING_LOT = { minX: 470, maxX: 780, minY: 70, maxY: 440 };
+const CAR_POS = { x: 625, y: 230 }; // car centre (parked lengthwise, trunk toward +y)
+const CAR_TRUNK_SPOT = { x: 618, y: 318 };
+const CAR_TRUNK_RADIUS = 36;
 const movingHeads = getMovingHeads();
 // Where the photographer stands to operate the guillotine cutter (in front of the desk's right end,
 // facing up-right toward the cutter at WORKSTATION_POS + (28, 8))
@@ -397,7 +422,12 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   { kind: 'box', minX: WORKSTATION_POS.x - 70, minY: WORKSTATION_POS.y - 28, maxX: WORKSTATION_POS.x + 46, maxY: WORKSTATION_POS.y + 22 },
   // Tripod magnet board easel
   { kind: 'circle', x: TRIPOD_BOARD_POS.x, y: TRIPOD_BOARD_POS.y, r: 10 },
+  // The photographer's car in the parking lot
+  { kind: 'box', minX: CAR_POS.x - 34, minY: CAR_POS.y - 70, maxX: CAR_POS.x + 34, maxY: CAR_POS.y + 62 },
 ];
+
+const insideRect = (r: { minX: number; maxX: number; minY: number; maxY: number }, x: number, y: number) =>
+  x >= r.minX && x <= r.maxX && y >= r.minY && y <= r.maxY;
 
 export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
   gameState,
@@ -729,6 +759,26 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       if (!seatedSheetDisposed) shootSheet = sheetResult;
     });
     let cameraRaise = 0; // 0 = camera at the chest, 1 = at the eye
+    // Printing supplies at the station + what the photographer carries back from the car
+    let supplies: SupplyState = createSupplies();
+    let carried: CarriedLoad = { ...EMPTY_LOAD };
+    let carLoadTimer = 0;
+    let trunkOpen = 0; // 0..1 animation of the trunk lid
+    let carSprites: { closed: HTMLImageElement; open: HTMLImageElement } | null = null;
+    {
+      const base = import.meta.env?.BASE_URL ?? '/';
+      const closed = new Image();
+      const open = new Image();
+      let loaded = 0;
+      const done = () => {
+        loaded++;
+        if (loaded === 2 && !seatedSheetDisposed) carSprites = { closed, open };
+      };
+      closed.onload = done;
+      open.onload = done;
+      closed.src = `${base}assets/aistudio/car-closed.png`;
+      open.src = `${base}assets/aistudio/car-open.png`;
+    }
     let shutterFlashLeft = 0;
     let sinceLastShot = 99;
     let castSheet: CastSheet | null = null;
@@ -1094,13 +1144,23 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         return;
       }
 
-      const batch = player.photosOnComputer;
+      // Supplies: blank magnet sheets + toner, and the printer may be jammed
+      const plan = planPrint(supplies, player.photosOnComputer);
+      if (plan.blockedBy) {
+        player.stationFeedbackText = printBlockMessageHe(plan.blockedBy);
+        player.stationFeedbackTimer = 3;
+        sound.playDanceBump();
+        hudEmitTimer = 1;
+        return;
+      }
+      const batch = plan.photos;
       const maxCap = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
       const batchBonus = calculateBatchPrintBonus(batch, maxCap);
       const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
       const job = calculateWorkstationJobTiming(batch, speedMult);
 
-      player.photosOnComputer = 0;
+      player.photosOnComputer -= batch;
+      supplies = consumePrint(supplies, plan.sheets, Math.random());
       player.uncutSheetsAtStation += batch;
       player.printerAnimDuration = job.totalDurationSec;
       player.printerAnimTimer = job.totalDurationSec;
@@ -1119,6 +1179,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       const bonusTag = batchBonus.bonusLabelHe ? ` · ${batchBonus.bonusLabelHe}` : '';
       player.stationFeedbackText = `🖨️ מדפיס ${job.sheetCount} דפי מגנט (${batch} תמונות · ${job.totalDurationSec.toFixed(1)} שנ')${bonusTag}! לחץ [E] לחיתוך! ✂️`;
+      if (plan.limitedBy) {
+        player.stationFeedbackText += ` · ${player.photosOnComputer} תמונות נשארו במחשב — ${printBlockMessageHe(plan.limitedBy)}`;
+      } else if (supplies.jammed) {
+        player.stationFeedbackText += ' · ⚠️ המדפסת נתקעה בסוף ההדפסה — צריך ערכת תיקון מהרכב 🚗';
+      }
       player.stationFeedbackTimer = Math.max(3.2, job.totalDurationSec + 1.8);
       hudEmitTimer = 1;
     };
@@ -1502,6 +1567,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
       reputation = 0;
+      supplies = createSupplies();
+      carried = { ...EMPTY_LOAD };
+      carLoadTimer = 0;
       vipCouple = spawnVipCouple();
 
       guests = [];
@@ -2553,6 +2621,48 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           );
           player.isNearStation = distToStation < STATION_INTERACTION_RADIUS;
 
+          // THE CAR: stand at the trunk to load what the station needs, carry it back to the desk
+          const distToTrunk = Math.hypot(player.x - CAR_TRUNK_SPOT.x, player.y - CAR_TRUNK_SPOT.y);
+          const atTrunk = distToTrunk < CAR_TRUNK_RADIUS;
+          trunkOpen = Math.max(0, Math.min(1, trunkOpen + (distToTrunk < 70 ? simDt : -simDt) * 4));
+          if (atTrunk && isEmptyLoad(carried)) {
+            const want = loadFromCar(supplies);
+            if (isEmptyLoad(want)) {
+              if (player.stationFeedbackTimer <= 0) {
+                player.stationFeedbackText = '🚗 הרכב מלא ציוד — כרגע לא חסר כלום בעמדה';
+                player.stationFeedbackTimer = 1.6;
+              }
+            } else {
+              carLoadTimer += simDt;
+              player.stationFeedbackText = `🚗 מוציא מהרכב: ${describeLoadHe(want)}… ${Math.round(
+                Math.min(1, carLoadTimer / SUPPLY.loadSec) * 100
+              )}%`;
+              player.stationFeedbackTimer = 0.4;
+              if (carLoadTimer >= SUPPLY.loadSec) {
+                carried = want;
+                carLoadTimer = 0;
+                sound.playComboChime(1);
+                player.scaleX = 0.94;
+                player.scaleY = 1.06;
+                player.stationFeedbackText = `📦 לקחת ${describeLoadHe(want)} — תחזיר לעמדת העבודה!`;
+                player.stationFeedbackTimer = 2.6;
+                hudEmitTimer = 1;
+              }
+            }
+          } else {
+            carLoadTimer = 0;
+          }
+          if (player.isNearStation && !isEmptyLoad(carried)) {
+            const what = describeLoadHe(carried);
+            supplies = deliverLoad(supplies, carried);
+            carried = { ...EMPTY_LOAD };
+            sound.playComboChime(2);
+            spawnParticles(WORKSTATION_POS.x, WORKSTATION_POS.y, 18, '#4ade80', 120, 40);
+            player.stationFeedbackText = `✅ הבאת ${what} לעמדה — אפשר להמשיך להדפיס! 🖨️`;
+            player.stationFeedbackTimer = 2.6;
+            hudEmitTimer = 1;
+          }
+
           const distToBoard = Math.hypot(
             player.x - TRIPOD_BOARD_POS.x,
             player.y - TRIPOD_BOARD_POS.y
@@ -2681,10 +2791,22 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.x += player.vx * simDt;
             player.y += player.vy * simDt;
 
-            const distFromCenter = Math.hypot(player.x, player.y);
-            if (distFromCenter > ARENA_RADIUS) {
-              player.x = (player.x / distFromCenter) * ARENA_RADIUS;
-              player.y = (player.y / distFromCenter) * ARENA_RADIUS;
+            // Walkable: the hall, the side-exit walkway and the parking lot outside
+            const walkable = (x: number, y: number) =>
+              Math.hypot(x, y) <= ARENA_RADIUS || insideRect(HALL_EXIT, x, y) || insideRect(PARKING_LOT, x, y);
+            if (!walkable(player.x, player.y)) {
+              if (walkable(player.x, prevY)) {
+                player.y = prevY;
+              } else if (walkable(prevX, player.y)) {
+                player.x = prevX;
+              } else if (walkable(prevX, prevY)) {
+                player.x = prevX;
+                player.y = prevY;
+              } else {
+                const distFromCenter = Math.hypot(player.x, player.y);
+                player.x = (player.x / distFromCenter) * ARENA_RADIUS;
+                player.y = (player.y / distFromCenter) * ARENA_RADIUS;
+              }
             }
 
             const solved = resolveFloorObstacles(player, PLAYER_BODY_RADIUS, FLOOR_OBSTACLES);
@@ -3998,6 +4120,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // 1. Hatzar HaMalka Dark Polished Slate Floor, Purple Light Wash Pools & Golden Glass Chuppah Runway
       const floorSize = 440;
       const tileStep = 55;
+      // Outside: the parking lot behind the side exit (drawn first; the hall floor overlaps the doorway)
+      drawParkingLot(ctx, originX, originY, PARKING_LOT, HALL_EXIT, floorSize, CAR_POS.x, discoBeatPhase / 2.8);
       drawHallFloor(ctx, originX, originY, floorSize, tileStep);
       drawGoboProjections(ctx, originX, originY, discoBeatPhase / 2.8);
       drawChuppahRunway(ctx, originX, originY, discoBeatPhase);
@@ -5319,6 +5443,43 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           }
         }
 
+        // The photographer's car (trunk lid opens when he walks up), lamp post and parking sign
+        {
+          const carIso = worldToIso(CAR_POS.x, CAR_POS.y);
+          drawables.push({
+            sortY: carIso.y + 30,
+            draw: () => {
+              const cx = originX + carIso.x;
+              const cy = originY + carIso.y;
+              ctx.save();
+              ctx.fillStyle = 'rgba(5, 6, 10, 0.45)';
+              ctx.beginPath();
+              ctx.ellipse(cx - 4, cy + 6, 92, 44, 0, 0, Math.PI * 2);
+              ctx.fill();
+              if (carSprites) {
+                const img = trunkOpen > 0.5 ? carSprites.open : carSprites.closed;
+                const w = 200;
+                const h = (img.height / img.width) * w;
+                ctx.imageSmoothingEnabled = true;
+                ctx.drawImage(img, Math.round(cx - w * 0.5), Math.round(cy - h * 0.6), Math.round(w), Math.round(h));
+              }
+              ctx.restore();
+            },
+          });
+          const lampWX = PARKING_LOT.maxX - 40;
+          const lampWY = PARKING_LOT.minY + 40;
+          drawables.push({
+            sortY: worldToIso(lampWX, lampWY).y,
+            draw: () => drawStreetLamp(ctx, originX, originY, lampWX, lampWY, discoBeatPhase / 2.8),
+          });
+          const signWX = HALL_EXIT.maxX + 6;
+          const signWY = HALL_EXIT.minY - 14;
+          drawables.push({
+            sortY: worldToIso(signWX, signWY).y,
+            draw: () => drawParkingSign(ctx, originX, originY, signWX, signWY),
+          });
+        }
+
         // Queue Roaming Catering Waiters with Silver Trays
         for (const wActor of waiters) {
           const wIso = worldToIso(wActor.x, wActor.y);
@@ -5430,6 +5591,35 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       // Ceiling-hung chandeliers, mirror spheres & fairy-light curtain always render above floor actors
       drawHallCeiling(ctx, originX, originY, discoBeatPhase / 2.8);
+
+      // Supplies hints: what he is carrying, and a pointer to the parking lot when the printer needs something
+      {
+        const pIso = worldToIso(player.x, player.y);
+        ctx.save();
+        ctx.textAlign = 'center';
+        if (!isEmptyLoad(carried)) {
+          ctx.font = '18px sans-serif';
+          ctx.fillText('📦', originX + pIso.x, originY + pIso.y - 128 + Math.sin(discoBeatPhase * 3) * 2);
+        }
+        const needsCar =
+          stateRef.current === 'playing' &&
+          isEmptyLoad(carried) &&
+          (supplies.jammed || supplies.toner < SUPPLY.tonerPerSheet * 2 || supplies.sheets < 3);
+        if (needsCar) {
+          const exitIso = worldToIso(HALL_EXIT.minX + 40, (HALL_EXIT.minY + HALL_EXIT.maxY) / 2, 60);
+          const bob = Math.sin(discoBeatPhase * 4) * 4;
+          ctx.globalAlpha = 0.75 + Math.sin(discoBeatPhase * 5) * 0.25;
+          ctx.font = 'bold 13px "Heebo", sans-serif';
+          ctx.direction = 'rtl';
+          ctx.lineWidth = 3.5;
+          ctx.strokeStyle = 'rgba(10, 8, 20, 0.85)';
+          const label = supplies.jammed ? '🚗 לרכב: ערכת תיקון' : supplies.toner < SUPPLY.tonerPerSheet * 2 ? '🚗 לרכב: טונר' : '🚗 לרכב: דפי מגנט';
+          ctx.strokeText(label, originX + exitIso.x, originY + exitIso.y + bob);
+          ctx.fillStyle = '#fbbf24';
+          ctx.fillText(label, originX + exitIso.x, originY + exitIso.y + bob);
+        }
+        ctx.restore();
+      }
 
       // Whole-frame score labels (Hebrew, RTL) floating above the photographed area
       if (frameLabels.length) {
@@ -5754,6 +5944,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           dashCharge: player.dashCharge,
           score,
           leads: reputation,
+          supplies: { sheets: supplies.sheets, toner: supplies.toner, jammed: supplies.jammed, carrying: !isEmptyLoad(carried) },
           naggingGuests: guests.filter((g) => g.behavior?.kind === 'impatient' && g.behavior.phase === 'nagging').length,
           bestScore,
           combo,
