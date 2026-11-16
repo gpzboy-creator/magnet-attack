@@ -137,6 +137,17 @@ import {
 } from '../game/guestBehavior';
 import { FrameSubject, MagnetLedger, scoreCaptureExtras, scoreFrame } from '../game/photoScoring';
 import {
+  ARRIVAL,
+  EventPhaseId,
+  PHASE_INTRO_SEC,
+  arrivalSchedule,
+  getPhaseInfo,
+  rateArrivalShot,
+} from '../game/eventPhases';
+import {
+  ARRIVAL_ENTRY,
+  HALL_DOOR,
+  PHOTO_SPOT,
   HALL_EXIT,
   OUTSIDE_OBSTACLES,
   PLAYER_CAR,
@@ -263,6 +274,18 @@ export interface WeddingGuestActor {
   coupleId?: number | null;
   /** Sprite look from the wedding cast sheet (bride & groom fixed; guests derived from outfit). */
   castLook?: CastLookId;
+  /** Arrival phase: walking in from the courtyard, posing at the photo wall, going to the seat. */
+  arrival?: {
+    state: 'waiting' | 'walking_in' | 'posing' | 'leaving';
+    delay: number;
+    order: number;
+    poseT: number;
+    photographed: boolean;
+    seatX: number;
+    seatY: number;
+    viaDoor: boolean;
+    poseOffsetY: number;
+  };
   /** Bride & groom: where the pair is heading right now. */
   vipTargetX?: number;
   vipTargetY?: number;
@@ -1015,6 +1038,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let guests: WeddingGuestActor[] = [];
     // The unique bride & groom (kept out of the crowd-ratio pool, but photographable like any guest)
     let vipCouple: WeddingGuestActor[] = [];
+    // EVENT PHASES (eventPhases.ts): arrival (guests come in & pose) → dancing (the board game)
+    let eventPhase: EventPhaseId = 'arrival';
+    let phaseIntroTimer = 0;
+    let phaseTime = 0;
+    let arrivalPlayerPlaced = false;
+    /** Guests still arriving (kept out of `guests` until they sit down in the hall). */
+    let arrivingGuests: WeddingGuestActor[] = [];
+    const arrivalStats = { total: 0, photographed: 0, gold: 0, missed: 0 };
     // Who is in each photo on its way through camera → laptop → sheets → board (FIFO)
     const magnetLedger = new MagnetLedger();
     // Business reputation ("לידים") from photographing potential couples
@@ -1742,7 +1773,190 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           guests[b].coupleId = cid;
         }
       }
+
+      // ARRIVAL PHASE: nobody is in the hall yet — every guest comes in through the lobby
+      if (waveNum === 1) startArrivalPhase();
     };
+
+    function startArrivalPhase() {
+      eventPhase = 'arrival';
+      phaseIntroTimer = PHASE_INTRO_SEC;
+      phaseTime = 0;
+      arrivalPlayerPlaced = false;
+      vipEvent = null;
+      nextVipCooldown = 9999;
+      const partnerIndex = (i: number) => {
+        const pid = guests[i].partnerId;
+        if (pid == null) return null;
+        const j = guests.findIndex((o) => o.id === pid);
+        return j >= 0 ? j : null;
+      };
+      const times = arrivalSchedule(guests.length, partnerIndex, Math.random);
+      const order = times.map((t, i) => ({ t, i })).sort((a, b) => a.t - b.t);
+      arrivingGuests = guests.map((g, i) => {
+        g.arrival = {
+          state: 'waiting',
+          delay: times[i],
+          order: order.findIndex((o) => o.i === i),
+          poseT: 0,
+          photographed: false,
+          seatX: g.x,
+          seatY: g.y,
+          viaDoor: false,
+          poseOffsetY: 0,
+        };
+        g.x = ARRIVAL_ENTRY.x;
+        g.y = ARRIVAL_ENTRY.y;
+        g.guestActivity = 'seated';
+        g.isSeated = false;
+        g.speechBubbleText = null;
+        return g;
+      });
+      guests = [];
+      arrivalStats.total = arrivingGuests.length;
+      arrivalStats.photographed = 0;
+      arrivalStats.gold = 0;
+      arrivalStats.missed = 0;
+    }
+
+    function startDancingPhase() {
+      // Anyone still on the way just takes their seat
+      for (const g of arrivingGuests) finishArrival(g);
+      arrivingGuests = [];
+      eventPhase = 'dancing';
+      phaseIntroTimer = PHASE_INTRO_SEC;
+      phaseTime = 0;
+      trackTimeRemaining = getWaveConfig(wave).trackDurationSec;
+      vipEvent = createVipEvent(vipEventSeq++);
+      nextVipCooldown = 5.0;
+      sound.playFanfare(true);
+      player.stationFeedbackText = `🚪 קבלת הפנים הסתיימה: צילמת ${arrivalStats.photographed}/${arrivalStats.total} אורחים (${arrivalStats.gold} בזהב ✨)`;
+      player.stationFeedbackTimer = 4;
+    }
+
+    function finishArrival(g: WeddingGuestActor) {
+      const a = g.arrival;
+      if (!a) return;
+      g.x = a.seatX;
+      g.y = a.seatY;
+      g.homeX = a.seatX;
+      g.homeY = a.seatY;
+      g.guestActivity = 'seated';
+      g.isSeated = true;
+      g.activityCooldown = 6 + Math.random() * 6;
+      g.arrival = undefined;
+      guests.push(g);
+    }
+
+    /** One arriving guest: walk in → queue → pose at the photo wall → walk through the door to the seat. */
+    function updateArrivingGuest(g: WeddingGuestActor, dt: number, queueIdx: number, partnerPosing: boolean) {
+      const a = g.arrival!;
+      g.dancePhase += dt * g.danceTempo;
+      g.hitFlashTimer = Math.max(0, g.hitFlashTimer - dt);
+      if ((g.flashTintTimer ?? 0) > 0) g.flashTintTimer = Math.max(0, (g.flashTintTimer ?? 0) - dt);
+      g.celebrateTimer = Math.max(0, g.celebrateTimer - dt);
+      if (g.speechBubbleText) {
+        g.wantsPhotoTimer -= dt;
+        if (g.wantsPhotoTimer <= 0) g.speechBubbleText = null;
+      }
+      const walkTo = (tx: number, ty: number, speed: number) => {
+        const mv = moveTowardPoint(g, { x: tx, y: ty }, speed, dt, 2);
+        const step = Math.hypot(mv.x - g.x, mv.y - g.y);
+        if (step > 0.01) {
+          const isoA = worldToIso(g.x, g.y);
+          const isoB = worldToIso(mv.x, mv.y);
+          g.direction = angleToIsoDirection(Math.atan2(isoB.y - isoA.y, isoB.x - isoA.x));
+          g.strideDist += step * 1.5;
+        }
+        g.x = mv.x;
+        g.y = mv.y;
+        return Math.hypot(tx - g.x, ty - g.y) < 3;
+      };
+      if (a.state === 'waiting') {
+        a.delay -= dt;
+        if (a.delay <= 0) {
+          a.state = 'walking_in';
+          g.y = ARRIVAL_ENTRY.y + (Math.random() - 0.5) * 10;
+        }
+        return;
+      }
+      if (a.state === 'walking_in') {
+        // Partners pose together side by side; everyone else lines up behind the photo spot
+        const slot = partnerPosing ? 0 : queueIdx;
+        a.poseOffsetY = partnerPosing ? 22 : 0;
+        const tx = PHOTO_SPOT.x + slot * ARRIVAL.queueSpacing;
+        const ty = PHOTO_SPOT.y + a.poseOffsetY;
+        const arrived = walkTo(tx, ty, ARRIVAL.walkSpeed);
+        if (arrived && slot === 0) {
+          a.state = 'posing';
+          a.poseT = 0;
+          g.direction = 'SW';
+          g.speechBubbleText = ['📸 צלם אותנו!', '😁 צ׳יז!', '✨ תמונה!', '🥂 לחיים!'][g.id % 4];
+          g.wantsPhotoTimer = 1.4;
+        } else if (arrived) {
+          g.direction = 'W';
+        }
+        return;
+      }
+      if (a.state === 'posing') {
+        a.poseT += dt;
+        g.strideDist += dt * 20;
+        // face the photographer when he's around
+        const isoG = worldToIso(g.x, g.y);
+        const isoP = worldToIso(player.x, player.y);
+        if (Math.hypot(player.x - g.x, player.y - g.y) < 260) {
+          g.direction = angleToIsoDirection(Math.atan2(isoP.y - isoG.y, isoP.x - isoG.x));
+        }
+        if (a.poseT >= ARRIVAL.poseSec) {
+          if (!a.photographed) {
+            arrivalStats.missed++;
+            applyScoreDelta(-ARRIVAL.missPenalty);
+            addFrameLabel(`-${ARRIVAL.missPenalty}`, g.x, g.y, '#f87171', '😕 פספסת תמונה בכניסה');
+          }
+          a.state = 'leaving';
+        }
+        return;
+      }
+      // leaving: through the hall door, then to the seat
+      if (!a.viaDoor) {
+        if (walkTo(HALL_DOOR.x, HALL_DOOR.y + a.poseOffsetY * 0.5, ARRIVAL.walkSpeed * 1.1)) a.viaDoor = true;
+        return;
+      }
+      if (walkTo(a.seatX, a.seatY, ARRIVAL.walkSpeed * 1.2)) finishArrival(g);
+    }
+
+    function updateArrivalPhase(dt: number) {
+      phaseTime += dt;
+      // queue order: guests walking in / posing, by arrival order
+      const line = arrivingGuests
+        .filter((g) => g.arrival && (g.arrival.state === 'walking_in' || g.arrival.state === 'posing'))
+        .sort((a, b) => a.arrival!.order - b.arrival!.order);
+      const leader = line[0];
+      line.forEach((g, idx) => {
+        const partnerPosing =
+          idx === 1 && leader && leader.partnerId === g.id && Math.hypot(leader.x - g.x, leader.y - g.y) < 70;
+        updateArrivingGuest(g, dt, idx, Boolean(partnerPosing) || Boolean(idx === 1 && leader?.partnerId === g.id));
+      });
+      // the rest (waiting / leaving)
+      for (const g of [...arrivingGuests]) {
+        if (!g.arrival || g.arrival.state === 'walking_in' || g.arrival.state === 'posing') continue;
+        updateArrivingGuest(g, dt, 0, false);
+      }
+      // partners pose together: when the leader poses, a partner standing at the spot poses too
+      for (const g of line) {
+        const a = g.arrival;
+        if (!a || a.state !== 'walking_in' || !leader?.arrival || leader.arrival.state !== 'posing') continue;
+        if (leader.partnerId === g.id && Math.hypot(g.x - PHOTO_SPOT.x, g.y - (PHOTO_SPOT.y + 22)) < 4) {
+          a.state = 'posing';
+          a.poseT = leader.arrival.poseT;
+          a.poseOffsetY = 22;
+        }
+      }
+      arrivingGuests = arrivingGuests.filter((g) => g.arrival);
+      if ((arrivingGuests.length === 0 && arrivalStats.total > 0) || phaseTime > ARRIVAL.maxPhaseSec) {
+        startDancingPhase();
+      }
+    }
 
     // ======================================================================
     // THE BRIDE & GROOM — unique VIP actors (cast sheet sprites)
@@ -2617,7 +2831,19 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           }
         } else if (simDt > 0) {
           // Track Timer Countdown
-          trackTimeRemaining = Math.max(0, trackTimeRemaining - simDt);
+          phaseIntroTimer = Math.max(0, phaseIntroTimer - simDt);
+          if (eventPhase === 'arrival') {
+            if (!arrivalPlayerPlaced) {
+              // Start the evening at the lobby photo wall
+              player.x = PHOTO_SPOT.x - 60;
+              player.y = PHOTO_SPOT.y + 40;
+              player.direction = 'NE';
+              arrivalPlayerPlaced = true;
+            }
+            updateArrivalPhase(simDt);
+          } else {
+            trackTimeRemaining = Math.max(0, trackTimeRemaining - simDt);
+          }
 
           // Check proximity to Far-Corner Magnet Workstation AND Tripod Magnet Board
           const distToStation = Math.hypot(
@@ -2874,7 +3100,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               vipEvent = null;
               nextVipCooldown = 3.5;
             }
-          } else {
+          } else if (eventPhase === 'dancing') {
             nextVipCooldown -= simDt;
             if (nextVipCooldown <= 0) {
               vipEvent = createVipEvent(vipEventSeq++);
@@ -3176,7 +3402,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 color: characterConfigRef.current.photographerStyle?.flashColor,
                 lensScreenOffset: { x: player.lensOffsetX, y: player.lensOffsetY },
                 layer: isBackFacingDirection(player.direction) ? 'behind' : 'front',
-                targets: vipCouple.length ? [...guests, ...vipCouple] : guests,
+                targets: [
+                  ...guests,
+                  ...(eventPhase !== 'arrival' ? vipCouple : []),
+                  ...arrivingGuests.filter((g) => g.arrival && g.arrival.state !== 'waiting'),
+                ],
                 tag: isWide ? 'wide' : 'pulse',
                 anchorKey: 'player',
               });
@@ -3197,8 +3427,15 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                     subjects.push({ kind: g.guestType ?? 'regular', coupleId: g.coupleId });
                   }
                 }
-                for (const g of vipCouple) {
-                  if (isTargetInCone(cone, g, 12)) subjects.push({ kind: g.guestType ?? 'regular' });
+                if (eventPhase !== 'arrival') {
+                  for (const g of vipCouple) {
+                    if (isTargetInCone(cone, g, 12)) subjects.push({ kind: g.guestType ?? 'regular' });
+                  }
+                }
+                for (const g of arrivingGuests) {
+                  if (g.arrival && g.arrival.state !== 'waiting' && isTargetInCone(cone, g, 10)) {
+                    subjects.push({ kind: g.guestType ?? 'regular', coupleId: g.coupleId });
+                  }
                 }
                 const hallNow = discoBeatPhase / 2.8;
                 BARTENDER_LOOKS.forEach((_, bi) => {
@@ -3846,13 +4083,18 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             frameLabels[li].y -= simDt * 14;
             if (frameLabels[li].life <= 0) frameLabels.splice(li, 1);
           }
-          updateVipCouple(simDt);
+          if (eventPhase !== 'arrival') updateVipCouple(simDt);
 
           // ====================================================================
           // UPDATE FLASH SHOTS & PHOTOGRAPH GUESTS (WITH VIP, FRAME PREFERENCES & TABLE REVIVAL)
           // ====================================================================
           const maxCapNow = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
-          const photographable = vipCouple.length ? [...guests, ...vipCouple] : guests;
+          const arrivingVisible = arrivingGuests.filter((g) => g.arrival && g.arrival.state !== 'waiting');
+          const photographable = [
+            ...guests,
+            ...(eventPhase !== 'arrival' ? vipCouple : []),
+            ...arrivingVisible,
+          ];
           for (const pr of projectiles) {
             if (!pr.active) continue;
             pr.x += pr.vx * simDt;
@@ -3928,6 +4170,20 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 }
                 if (guest.guestType === 'bride' || guest.guestType === 'groom') {
                   chuppahCelebrateTimer = 1.8;
+                }
+
+                // ARRIVAL: a guest photographed while posing at the flower wall (gold in the sweet spot)
+                if (guest.arrival && guest.arrival.state === 'posing' && !guest.arrival.photographed) {
+                  const q = rateArrivalShot(guest.arrival.poseT);
+                  if (q) {
+                    guest.arrival.photographed = true;
+                    arrivalStats.photographed++;
+                    if (q === 'gold') arrivalStats.gold++;
+                    const bonus = q === 'gold' ? ARRIVAL.goldBonus : ARRIVAL.okBonus;
+                    applyScoreDelta(bonus);
+                    addFrameLabel(`+${bonus}`, guest.x, guest.y, q === 'gold' ? '#fbbf24' : '#e2e8f0', q === 'gold' ? '✨ תמונת זהב בכניסה!' : '📸 תמונת כניסה');
+                    guest.celebrateTimer = 1.2;
+                  }
                 }
 
                 // Mini photo thumbnail flies to photographer's camera bag!
@@ -4057,7 +4313,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           const isStickingAnimActive =
             pendingBoardSticks > 0 || flyingMagnets.some((m) => m.active);
 
-          if (quotaMet && !pendingOutcome && !isStickingAnimActive) {
+          if (eventPhase !== 'dancing') {
+            // the arrival phase ends on its own (updateArrivalPhase)
+          } else if (quotaMet && !pendingOutcome && !isStickingAnimActive) {
             // Stage Complete! Advancing or Wedding Victory!
             if (wave >= 4) {
               pendingOutcome = 'victory';
@@ -5343,7 +5601,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       if (stateRef.current !== 'title') {
         const outfits = characterConfigRef.current.guestOutfits;
         const allowedBubbleGuestIds = new Set(
-          guests
+          [...guests, ...arrivingGuests]
             .filter(
               (g) =>
                 Boolean(g.speechBubbleText) &&
@@ -5359,7 +5617,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             .map((g) => g.id)
         );
 
-        for (const guest of guests) {
+        const renderGuests = arrivingGuests.length
+          ? [...guests, ...arrivingGuests.filter((g) => g.arrival && g.arrival.state !== 'waiting')]
+          : guests;
+        for (const guest of renderGuests) {
           const eIso = worldToIso(guest.x, guest.y);
           const liveOutfit = outfits[guest.outfitIndex % outfits.length];
           // Cast-sheet look follows the outfit's gender; the seated (procedural) body uses the same palette
@@ -5402,7 +5663,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         }
 
         // The bride & groom (embracing under the chuppah during the kiss moment)
-        if (castSheet?.embrace && isCoupleAtChuppah()) {
+        if (eventPhase === 'arrival') {
+          // the bride & groom are at the family photo session during the arrival
+        } else if (castSheet?.embrace && isCoupleAtChuppah()) {
           const [bride, groom] = vipCouple;
           const mx = (bride.x + groom.x) / 2;
           const my = (bride.y + groom.y) / 2;
@@ -5621,6 +5884,38 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           ctx.strokeText(label, originX + exitIso.x, originY + exitIso.y + bob);
           ctx.fillStyle = '#fbbf24';
           ctx.fillText(label, originX + exitIso.x, originY + exitIso.y + bob);
+        }
+        ctx.restore();
+      }
+
+      // ARRIVAL: pose timer ring over posing guests (glows gold in the sweet spot)
+      if (eventPhase === 'arrival') {
+        ctx.save();
+        for (const g of arrivingGuests) {
+          const a = g.arrival;
+          if (!a || a.state !== 'posing') continue;
+          const gi = worldToIso(g.x, g.y, 78);
+          const x = originX + gi.x;
+          const y = originY + gi.y;
+          const frac = Math.min(1, a.poseT / ARRIVAL.poseSec);
+          const peak = a.poseT >= ARRIVAL.peakStartSec && a.poseT <= ARRIVAL.peakEndSec;
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(15,23,42,0.7)';
+          ctx.beginPath();
+          ctx.arc(x, y, 8, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = a.photographed ? '#4ade80' : peak ? '#fbbf24' : '#e2e8f0';
+          if (peak && !a.photographed) {
+            ctx.shadowColor = '#fbbf24';
+            ctx.shadowBlur = 10;
+          }
+          ctx.beginPath();
+          ctx.arc(x, y, 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac));
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.font = '9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(a.photographed ? '✅' : '📸', x, y + 3);
         }
         ctx.restore();
       }
@@ -5918,6 +6213,40 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         vig.addColorStop(1, 'rgba(12, 6, 4, 0.42)');
         ctx.fillStyle = vig;
         ctx.fillRect(0, 0, viewW, viewH);
+      }
+
+      // EVENT PHASE: title card when a phase starts + live arrival progress (screen space)
+      if (stateRef.current === 'playing') {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.direction = 'rtl';
+        if (phaseIntroTimer > 0) {
+          const info = getPhaseInfo(eventPhase);
+          const t = phaseIntroTimer / PHASE_INTRO_SEC;
+          const a = Math.min(1, (1 - t) * 6, t * 4);
+          ctx.globalAlpha = a;
+          ctx.fillStyle = 'rgba(10, 8, 20, 0.66)';
+          const w = Math.min(viewW - 32, 560);
+          ctx.fillRect(viewW / 2 - w / 2, viewH * 0.3 - 46, w, 92);
+          ctx.fillStyle = '#fde68a';
+          ctx.font = 'bold 30px "Heebo", "Assistant", sans-serif';
+          ctx.fillText(info.titleHe, viewW / 2, viewH * 0.3 - 4);
+          ctx.fillStyle = '#f8fafc';
+          ctx.font = '15px "Heebo", "Assistant", sans-serif';
+          ctx.fillText(info.goalHe, viewW / 2, viewH * 0.3 + 26, w - 24);
+          ctx.globalAlpha = 1;
+        }
+        if (eventPhase === 'arrival') {
+          const left = arrivingGuests.length;
+          const label = `🚪 קבלת פנים · צולמו ${arrivalStats.photographed}/${arrivalStats.total} · ✨ זהב ${arrivalStats.gold} · 😕 פוספסו ${arrivalStats.missed} · עוד ${left} בדרך`;
+          ctx.font = 'bold 13px "Heebo", "Assistant", sans-serif';
+          const w = ctx.measureText(label).width + 24;
+          ctx.fillStyle = 'rgba(10, 8, 20, 0.6)';
+          ctx.fillRect(viewW / 2 - w / 2, 40, w, 24);
+          ctx.fillStyle = '#fde68a';
+          ctx.fillText(label, viewW / 2, 57);
+        }
+        ctx.restore();
       }
 
       // Update HUD at regular cadence

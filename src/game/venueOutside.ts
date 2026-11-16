@@ -50,6 +50,12 @@ export function doorwaySlideTarget(x: number, y: number, reach = 46): number | n
   return null;
 }
 
+/** Arrival photo spot in the lobby: guests stop here in front of the flower wall to pose. */
+export const PHOTO_SPOT = { x: 582, y: 236 };
+/** Where arriving guests come in (the garden gate) and the hall door they leave through. */
+export const ARRIVAL_ENTRY = { x: 705, y: 236 };
+export const HALL_DOOR = { x: 445, y: 236 };
+
 /** Stall centres. Row A (north of the aisle) parks trunk-first toward the aisle (+y). */
 export const STALL_WIDTH = 120;
 export const STALLS_ROW_A: Array<{ x: number; y: number }> = [0, 1, 2, 3].map((i) => ({
@@ -77,6 +83,8 @@ export const OUTSIDE_OBSTACLES: Array<
   { kind: 'circle', x: 488, y: 355, r: 10 },
   { kind: 'circle', x: 642, y: 355, r: 10 },
   { kind: 'box', minX: 525, minY: 330, maxX: 605, maxY: 360 },
+  // Flower photo wall behind the photo spot
+  { kind: 'box', minX: 548, minY: 186, maxX: 616, maxY: 196 },
   // Courtyard: fountain, olive trees, benches
   { kind: 'circle', x: 800, y: 110, r: 34 },
   { kind: 'circle', x: 735, y: 360, r: 16 },
@@ -663,6 +671,44 @@ function stringLights(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: 
   ctx.restore();
 }
 
+function flowerWall(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: number) {
+  const x0 = 548;
+  const x1 = 616;
+  const y = 191;
+  const H = 84;
+  // panel
+  wallAlongX(ctx, ox, oy, x0, x1, y, H, '#2d4a33');
+  // flowers: white + blush roses in a dense grid
+  const cols = ['#fdf2f8', '#fbcfe8', '#ffffff', '#f9a8d4', '#fde68a'];
+  for (let i = 0; i < 90; i++) {
+    const u = hash(i * 3.1) * (x1 - x0 - 4) + 2;
+    const z = hash(i * 7.7) * (H - 8) + 4;
+    const q = p(ox, oy, x0 + u, y, z);
+    ctx.fillStyle = cols[i % cols.length];
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // neon sign
+  const mid = p(ox, oy, (x0 + x1) / 2, y, H * 0.62);
+  ctx.save();
+  ctx.font = 'bold 11px "Heebo", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.direction = 'rtl';
+  ctx.shadowColor = '#f472b6';
+  ctx.shadowBlur = 8 + Math.sin(t * 3) * 2;
+  ctx.fillStyle = '#fff1f8';
+  ctx.fillText('Love ♥', mid.x, mid.y);
+  ctx.restore();
+  // floor marker for the pose spot
+  const s = p(ox, oy, PHOTO_SPOT.x, PHOTO_SPOT.y);
+  ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(s.x, s.y, 22, 11, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
 /** All outside props as depth-sorted drawables (the cars are added by the game). */
 export function getOutsideDrawables(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: number): OutsideDrawable[] {
   const at = (x: number, y: number) => worldToIso(x, y).y;
@@ -671,6 +717,7 @@ export function getOutsideDrawables(ctx: CanvasRenderingContext2D, ox: number, o
   list.push({ sortY: at(HALL_EDGE_X + 15, HALL_EXIT.maxY), draw: () => doorFrame(ctx, ox, oy, HALL_EDGE_X + 15, HALL_EXIT.minY - 4, HALL_EXIT.maxY + 4, 100, 'לובי ←', true) });
   list.push({ sortY: at(GARDEN_GATE.minX + 25, GARDEN_GATE.maxY), draw: () => doorFrame(ctx, ox, oy, GARDEN_GATE.minX + 25, GARDEN_GATE.minY - 4, GARDEN_GATE.maxY + 4, 96, 'חצר · חניה', true) });
   // Lobby props
+  list.push({ sortY: at(582, 191), draw: () => flowerWall(ctx, ox, oy, t) });
   list.push({ sortY: at(520, 135), draw: () => welcomeEasel(ctx, ox, oy, 520, 135) });
   list.push({ sortY: at(630, 150), draw: () => guestBookTable(ctx, ox, oy, { minX: 575, maxX: 630, minY: 118, maxY: 150 }) });
   for (const [x, y] of [
