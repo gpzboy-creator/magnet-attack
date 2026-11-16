@@ -399,6 +399,14 @@ const BOARD_INTERACTION_RADIUS = 85;
 
 // Far-Corner Magnet Production Workstation (עמדת מגנטים בפינת האולם רחוק מהאורחים ומהלוח: שולחן מלבני + מחשב נייד + מדפסת תרמית + ניירות הדבקה + חותך + כסא צלם)
 const WORKSTATION_POS = { x: 265, y: -262 }; // top-right corner of the hall (between the chuppah and the right-back wall)
+/** The desk's footprint (matches the drawn 116×50 table): solid, and the chair is only reachable from its front. */
+const WORKSTATION_DESK_BOX = {
+  kind: 'box' as const,
+  minX: WORKSTATION_POS.x - 70,
+  minY: WORKSTATION_POS.y - 28,
+  maxX: WORKSTATION_POS.x + 46,
+  maxY: WORKSTATION_POS.y + 22,
+};
 const WORKSTATION_CHAIR_POS = { x: WORKSTATION_POS.x - 8, y: WORKSTATION_POS.y + 34 };
 const STATION_INTERACTION_RADIUS = 95;
 
@@ -453,7 +461,7 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   // Dancefloor subwoofer
   { kind: 'box', minX: -102, minY: 56, maxX: -76, maxY: 80 },
   // Magnet workstation desk (the chair in front of it stays reachable)
-  { kind: 'box', minX: WORKSTATION_POS.x - 70, minY: WORKSTATION_POS.y - 28, maxX: WORKSTATION_POS.x + 46, maxY: WORKSTATION_POS.y + 22 },
+  WORKSTATION_DESK_BOX,
   // Tripod magnet board easel
   { kind: 'circle', x: TRIPOD_BOARD_POS.x, y: TRIPOD_BOARD_POS.y, r: 10 },
   // Outside: lobby furniture, courtyard fountain / trees / bench, the photographer's car
@@ -2887,7 +2895,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               } else if (spawn === 'dj') {
                 player.x = -40;
                 player.y = -170;
-              } else if (spawn && /^-?\d+,-?\d+$/.test(spawn)) {
+              }
+              if (spawn) (window as unknown as { __player?: unknown }).__player = player;
+              if (spawn && /^-?\d+,-?\d+$/.test(spawn)) {
                 const [sx, sy] = spawn.split(',').map(Number);
                 player.x = sx;
                 player.y = sy;
@@ -3029,6 +3039,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               chairPos: WORKSTATION_CHAIR_POS,
               stationPos: WORKSTATION_POS,
               stationRadius: STATION_INTERACTION_RADIUS,
+              deskBox: WORKSTATION_DESK_BOX,
               isMoving: moveResult.isMoving,
               isDashing: player.dashActiveTimer > 0,
               dt: simDt,

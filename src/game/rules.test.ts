@@ -31,6 +31,7 @@ import {
   computeCombinedMovementVector,
   getActiveWorkflowObjective,
   updateWorkstationChairState,
+  segmentHitsBox,
   calculateWorkstationJobTiming,
   getWorkstationSheetProgress,
   createVipEvent,
@@ -616,4 +617,32 @@ test('moveTowardPoint steps toward the target and reports arrival', () => {
   const b = moveTowardPoint({ x: 90, y: 0 }, { x: 100, y: 0 }, 50, 0.5);
   assert.equal(b.arrived, true);
   assert.ok(b.x > 90 && b.x <= 100);
+});
+
+test('workstation chair: never grabs him through the desk (from behind or beside it)', () => {
+  const stationPos = { x: 265, y: -262 };
+  const chairPos = { x: 257, y: -228 };
+  const deskBox = { minX: 195, minY: -290, maxX: 311, maxY: -240 };
+  const fresh = { isSeated: false, wasNearStation: false, sitGraceTimer: 0, standUpCooldown: 0 };
+  const base = { chairPos, stationPos, stationRadius: 95, isDashing: false, dt: 0.016, deskBox };
+  // behind the desk and to its left: near the station, but no teleport to the chair
+  for (const playerPos of [{ x: 257, y: -300 }, { x: 186, y: -262 }]) {
+    for (const isMoving of [true, false]) {
+      const step = updateWorkstationChairState(fresh, { ...base, playerPos, isMoving });
+      assert.equal(step.nextChairState.isSeated, false);
+      assert.deepEqual(step.nextPlayerPos, playerPos);
+    }
+  }
+  // walking round to the front of the desk: sits as before
+  const behind = updateWorkstationChairState(fresh, { ...base, playerPos: { x: 257, y: -300 }, isMoving: true });
+  const front = updateWorkstationChairState(behind.nextChairState, { ...base, playerPos: { x: 240, y: -215 }, isMoving: true });
+  assert.equal(front.justSatDown, true);
+  assert.deepEqual(front.nextPlayerPos, chairPos);
+});
+
+test('segmentHitsBox', () => {
+  const box = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+  assert.equal(segmentHitsBox({ x: 5, y: -5 }, { x: 5, y: 15 }, box), true);
+  assert.equal(segmentHitsBox({ x: -5, y: -5 }, { x: -1, y: 15 }, box), false);
+  assert.equal(segmentHitsBox({ x: 5, y: 12 }, { x: 8, y: 20 }, box), false);
 });

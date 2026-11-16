@@ -308,6 +308,33 @@ export function getActiveWorkflowObjective(
   return 'dancefloor';
 }
 
+/** True when the segment a→b passes through the axis-aligned box (slab test). */
+export function segmentHitsBox(
+  a: Vec2,
+  b: Vec2,
+  box: { minX: number; minY: number; maxX: number; maxY: number }
+): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const d = { x: b.x - a.x, y: b.y - a.y };
+  for (const [p, dp, lo, hi] of [
+    [a.x, d.x, box.minX, box.maxX],
+    [a.y, d.y, box.minY, box.maxY],
+  ] as const) {
+    if (Math.abs(dp) < 1e-9) {
+      if (p < lo || p > hi) return false;
+      continue;
+    }
+    let ta = (lo - p) / dp;
+    let tb = (hi - p) / dp;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta);
+    t1 = Math.min(t1, tb);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
 export interface WorkstationChairState {
   isSeated: boolean;
   wasNearStation: boolean;
@@ -334,6 +361,10 @@ export function updateWorkstationChairState(
     isMoving: boolean;
     isDashing: boolean;
     dt: number;
+    /** The desk: he only sits when he can reach the chair without passing through it. */
+    deskBox?: { minX: number; minY: number; maxX: number; maxY: number };
+    /** How close to the chair he must be to sit (default 60). */
+    sitReach?: number;
   }
 ): {
   nextChairState: WorkstationChairState;
@@ -345,6 +376,11 @@ export function updateWorkstationChairState(
   const distToStation = Math.hypot(playerPos.x - stationPos.x, playerPos.y - stationPos.y);
   const distToChair = Math.hypot(playerPos.x - chairPos.x, playerPos.y - chairPos.y);
   const isNearStation = distToStation < stationRadius || distToChair < stationRadius * 0.75;
+  // Sitting snaps him onto the chair, so only allow it from the chair's side of the desk
+  // (never from behind or beside the desk — that would teleport him through it).
+  const canSit =
+    distToChair < (params.sitReach ?? 60) &&
+    !(params.deskBox && segmentHitsBox(playerPos, chairPos, params.deskBox));
 
   let isSeated = prev.isSeated;
   let sitGraceTimer = Math.max(0, prev.sitGraceTimer - dt);
@@ -372,7 +408,7 @@ export function updateWorkstationChairState(
   }
 
   // Just arrived at the workstation -> automatically sit on the chair (unless standUpCooldown is active)!
-  if (!prev.wasNearStation && isNearStation && standUpCooldown <= 0) {
+  if (!prev.wasNearStation && isNearStation && canSit && standUpCooldown <= 0) {
     isSeated = true;
     sitGraceTimer = 0.22;
     standUpCooldown = 0;
@@ -394,7 +430,7 @@ export function updateWorkstationChairState(
   } else {
     // Currently standing inside workstation radius:
     // If the photographer stops moving near the chair/station after standing up cooldown, sit down on the chair
-    if (!isMoving && !isDashing && standUpCooldown <= 0 && distToChair < 58) {
+    if (!isMoving && !isDashing && standUpCooldown <= 0 && canSit) {
       isSeated = true;
       justSatDown = true;
       nextPlayerPos = { x: chairPos.x, y: chairPos.y };
@@ -404,7 +440,9 @@ export function updateWorkstationChairState(
   return {
     nextChairState: {
       isSeated,
-      wasNearStation: isNearStation,
+      // Near the desk but unable to sit (behind / beside it): not "arrived" yet, so he still sits
+      // automatically once he walks round to the chair.
+      wasNearStation: isNearStation && (canSit || isSeated || prev.wasNearStation),
       sitGraceTimer,
       standUpCooldown,
     },
