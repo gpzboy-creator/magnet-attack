@@ -809,6 +809,15 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       closed.src = `${base}assets/aistudio/car-closed.png`;
       open.src = `${base}assets/aistudio/car-open.png`;
     }
+    // DJ (PixelLab hi-bit, 8 rotations S,SE,E,NE,N,NW,W,SW in 168px cells)
+    let djSheet: HTMLImageElement | null = null;
+    {
+      const img = new Image();
+      img.onload = () => {
+        if (!seatedSheetDisposed) djSheet = img;
+      };
+      img.src = `${import.meta.env?.BASE_URL ?? '/'}assets/characters/dj-rotations.png`;
+    }
     const parkedCarImgs = new Map<string, HTMLImageElement>();
     {
       const base = import.meta.env?.BASE_URL ?? '/';
@@ -2852,10 +2861,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               player.y = PHOTO_SPOT.y + 40;
               player.direction = 'NE';
               arrivalPlayerPlaced = true;
-              // Debug: ?spawn=parking starts the photographer next to his car (for checking the lot)
-              if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('spawn') === 'parking') {
+              // Debug: ?spawn=parking | dj starts the photographer there (for checking art)
+              const spawn = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('spawn') : null;
+              if (spawn === 'parking') {
                 player.x = PLAYER_CAR_TRUNK_SPOT.x;
                 player.y = PLAYER_CAR_TRUNK_SPOT.y + 30;
+              } else if (spawn === 'dj') {
+                player.x = -40;
+                player.y = -170;
               }
             }
             updateArrivalPhase(simDt);
@@ -4487,7 +4500,23 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       drawables.push({
         sortY: djIso.y,
         draw: () => {
-          drawPixelDjStageAndLedWall(ctx, originX, originY, discoBeatPhase, drawIsoBox);
+          drawPixelDjStageAndLedWall(ctx, originX, originY, discoBeatPhase, drawIsoBox, (fx, fy) => {
+            if (!djSheet) return false;
+            const cell = djSheet.height;
+            // Looks around the floor: mostly toward the dancers (S / SW), now and then SE
+            const look = Math.floor(discoBeatPhase / 3.2) % 6;
+            const dirIdx = look === 2 ? 7 : look === 4 ? 1 : look === 5 ? 7 : 0;
+            // Same on-screen size as the photographer (166px PixelLab figure ≈ 236px photographer cell content)
+            const k = (236 * (128 / 352) * (characterConfigRef.current.photographerScale || 1.25)) / 166;
+            const bob = Math.abs(Math.sin(discoBeatPhase * 3)) * 2.5;
+            const w = cell * k;
+            const h = cell * k;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(djSheet, dirIdx * cell, 0, cell, cell, Math.round(fx - w / 2), Math.round(fy - h + bob), Math.round(w), Math.round(h));
+            ctx.restore();
+            return true;
+          });
         },
       });
 

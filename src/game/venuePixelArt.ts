@@ -124,7 +124,9 @@ export function drawPixelDjStageAndLedWall(
     right: string,
     stroke?: string,
     zBase?: number
-  ) => void
+  ) => void,
+  /** Draws the DJ sprite with his feet at (footX, footY); called before the console so it hides his legs. */
+  drawDj?: (footX: number, footY: number) => boolean
 ) {
   // 1. Raised Dark Stage Platform under DJ Booth (photo 6 & 13)
   drawIsoBox(
@@ -180,6 +182,10 @@ export function drawPixelDjStageAndLedWall(
   ctx.closePath();
   ctx.stroke();
 
+  // The DJ stands on the stage between the LED wall and his console
+  const djFeet = worldToIso(-95, -269, 8);
+  const djDrawn = drawDj ? drawDj(originX + djFeet.x, originY + djFeet.y) : false;
+
   // 3. Illuminated White/Cyan LED DJ Console Booth (photo 6)
   drawIsoBox(
     originX,
@@ -220,7 +226,8 @@ export function drawPixelDjStageAndLedWall(
   }
   pxRect(ctx, originX + djLapIso.x - 7, originY + djLapIso.y - 9, 14, 9, '#38bdf8');
 
-  // DJ Character with Headphones behind the booth
+  // Fallback DJ (until the sprite loads): head with headphones behind the booth
+  if (djDrawn) return;
   const djHeadIso = worldToIso(-95, -255, 64);
   const dHx = originX + djHeadIso.x;
   const dHy = originY + djHeadIso.y + Math.sin(discoBeatPhase * 3) * 2;
