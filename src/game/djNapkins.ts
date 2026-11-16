@@ -29,27 +29,27 @@ export const DJ_NAPKINS = {
   /** Seconds between throws while the party is dancing. */
   minGapSec: 16,
   maxGapSec: 28,
-  napkinsPerThrow: 16,
+  napkinsPerThrow: 40,
   /** Where the pack leaves his raised hand (world units, z = height). */
   hand: { x: -98, y: -262, z: 118 },
   /** Quick toss up and out of the pack… */
-  tossSec: 0.45,
+  tossSec: 0.6,
   /** …share of the horizontal distance covered during the toss (the rest drifts while floating). */
   tossShare: 0.35,
   apexRiseMin: 28,
   apexRiseMax: 55,
   /** …then a slow paper float down (total time in the air). */
-  flightMinSec: 2.8,
-  flightMaxSec: 3.9,
+  flightMinSec: 4.5,
+  flightMaxSec: 6.2,
   /** Side-to-side sway while floating (world units) and its speed (rad/s). */
   swayAmp: 12,
-  swayFreqMin: 3.2,
-  swayFreqMax: 5.2,
+  swayFreqMin: 2.4,
+  swayFreqMax: 4.0,
   /** How long they lie on the floor before fading out. */
   lieSec: 7,
   fadeSec: 1.2,
   /** Spread around the target dance cluster. */
-  spread: 46,
+  spread: 62,
 };
 
 export interface Napkin {
