@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  SERVICE_APPROACH,
+  VENDOR_STALLS,
   COURTYARD_FENCE_X,
   PARKING,
   PHOTO_SPOT,
@@ -45,13 +47,16 @@ function reachable(start: { x: number; y: number }, goal: { x: number; y: number
   return false;
 }
 
-test('back of house: from the hall service door to the car trunk (short, never through the guests)', () => {
-  const start = { x: SERVICE_EXIT.minX + 20, y: (SERVICE_EXIT.minY + SERVICE_EXIT.maxY) / 2 };
-  assert.ok(reachable(start, PLAYER_CAR_TRUNK_SPOT));
+test('back of house: the service door leads to the vendors\' parking, fenced off from the gardens', () => {
+  const start = { x: SERVICE_APPROACH.minX + 140, y: SERVICE_APPROACH.maxY - 20 }; // hall floor by the station
+  assert.ok(reachable(start, { x: VENDOR_STALLS[1].x - 6, y: VENDOR_STALLS[1].y + 92 }), 'station corner -> service door -> vendor stalls');
+  assert.ok(!reachable(start, PHOTO_SPOT, 20), 'no way from the yard into the guests\' gardens');
+});
+
+test('photographer\'s car is in the guests\' lot: hall door -> lobby -> gardens -> gate -> plaza -> trunk', () => {
+  assert.ok(insideRect(PARKING, PLAYER_CAR_TRUNK_SPOT.x, PLAYER_CAR_TRUNK_SPOT.y));
+  assert.ok(reachable({ x: HALL_EXIT.minX + 20, y: 236 }, PLAYER_CAR_TRUNK_SPOT));
   assert.ok(!blocked(PLAYER_CAR_TRUNK_SPOT.x, PLAYER_CAR_TRUNK_SPOT.y), 'trunk spot is free');
-  assert.ok(Math.hypot(PLAYER_CAR_TRUNK_SPOT.x - SERVICE_EXIT.maxX, PLAYER_CAR_TRUNK_SPOT.y - SERVICE_EXIT.minY) < 200);
-  // the service yard is fenced off from the courtyard: no way into the guests' gardens from it
-  assert.ok(!reachable(start, PHOTO_SPOT, 20));
 });
 
 test('guests: parking -> buffer walkway -> plaza -> main gate -> reception garden -> lobby -> hall exit', () => {

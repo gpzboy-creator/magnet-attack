@@ -46,6 +46,8 @@ export const PARKING: Rect = { minX: 2090, maxX: 2570, minY: -70, maxY: 530 };
  */
 export const SERVICE_DOOR_X = HALL_EDGE_X;
 export const SERVICE_EXIT: Rect = { minX: 150, maxX: 480, minY: -385, maxY: -325 };
+/** The hall floor corner around the magnet station, so the service door is reachable from the floor. */
+export const SERVICE_APPROACH: Rect = { minX: 150, maxX: 436, minY: -400, maxY: 0 };
 export const SERVICE_YARD: Rect = { minX: 470, maxX: 680, minY: -640, maxY: -170 };
 /** At the back of the yard, behind the vendors' cars (so it never hides the service door). */
 export const KITCHEN: Rect = { minX: 480, maxX: 676, minY: -636, maxY: -566 };
@@ -86,7 +88,7 @@ export const COURTYARD_LAMPS: Array<[number, number]> = [
 ];
 
 export const WALKABLE_OUTSIDE: Rect[] = [
-  HALL_EXIT, LOBBY, GARDEN_GATE, COURTYARD, PLAZA_GATE, PLAZA, BUFFER_WALK, PARKING, SERVICE_EXIT, SERVICE_YARD,
+  HALL_EXIT, LOBBY, GARDEN_GATE, COURTYARD, PLAZA_GATE, PLAZA, BUFFER_WALK, PARKING, SERVICE_APPROACH, SERVICE_EXIT, SERVICE_YARD,
 ];
 
 export const insideRect = (r: Rect, x: number, y: number) =>
@@ -138,8 +140,11 @@ export const STALLS_ROW_B: Array<{ x: number; y: number }> = [0, 1, 2, 3].map((i
   y: 370,
 }));
 
-/** The photographer parks with the vendors, by the service door (trunk toward the service lane). */
-export const PLAYER_CAR = VENDOR_STALLS[0];
+/**
+ * The photographer parks in the guests' lot (row A, third stall), trunk toward the aisle: fetching
+ * supplies means a run through the lobby, the gardens, the gate and the plaza.
+ */
+export const PLAYER_CAR = STALLS_ROW_A[2];
 export const PLAYER_CAR_TRUNK_SPOT = { x: PLAYER_CAR.x - 6, y: PLAYER_CAR.y + 92 };
 
 /** Guests' cars filling the other stalls (PixelLab hi-bit renders, same angle as the player's car). */
@@ -148,11 +153,13 @@ export const PARKED_CAR_SPRITES = [
 ] as const;
 export type ParkedCarSprite = (typeof PARKED_CAR_SPRITES)[number];
 export const PARKED_CARS: Array<{ x: number; y: number; sprite: ParkedCarSprite }> = [
-  { ...VENDOR_STALLS[1], sprite: 'silver-van' }, // the caterer's van, next to the photographer
+  // vendors' parking by the service door: the caterer's van and the DJ's car
+  { ...VENDOR_STALLS[0], sprite: 'white' },
+  { ...VENDOR_STALLS[1], sprite: 'silver-van' },
+  // guests' lot
   { ...STALLS_ROW_A[0], sprite: 'black-suv' },
   { ...STALLS_ROW_A[1], sprite: 'blue-hybrid' },
-  { ...STALLS_ROW_A[2], sprite: 'white' },
-  { ...STALLS_ROW_A[3], sprite: 'silver-van' },
+  { ...STALLS_ROW_A[3], sprite: 'white' },
   { ...STALLS_ROW_B[0], sprite: 'red-hatch' },
   { ...STALLS_ROW_B[1], sprite: 'yellow-taxi' },
   { ...STALLS_ROW_B[2], sprite: 'blue-hybrid' },
