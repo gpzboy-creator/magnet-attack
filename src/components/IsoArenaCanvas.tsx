@@ -151,6 +151,8 @@ import {
   HALL_EXIT,
   OUTSIDE_OBSTACLES,
   PLAYER_CAR,
+  PARKED_CARS,
+  PARKED_CAR_SPRITES,
   PLAYER_CAR_TRUNK_SPOT,
   doorwaySlideTarget,
   drawOutsideGround,
@@ -806,6 +808,17 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       open.onload = done;
       closed.src = `${base}assets/aistudio/car-closed.png`;
       open.src = `${base}assets/aistudio/car-open.png`;
+    }
+    const parkedCarImgs = new Map<string, HTMLImageElement>();
+    {
+      const base = import.meta.env?.BASE_URL ?? '/';
+      for (const name of PARKED_CAR_SPRITES) {
+        const img = new Image();
+        img.onload = () => {
+          if (!seatedSheetDisposed) parkedCarImgs.set(name, img);
+        };
+        img.src = `${base}assets/aistudio/parked-${name}.png`;
+      }
     }
     let shutterFlashLeft = 0;
     let sinceLastShot = 99;
@@ -2839,6 +2852,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               player.y = PHOTO_SPOT.y + 40;
               player.direction = 'NE';
               arrivalPlayerPlaced = true;
+              // Debug: ?spawn=parking starts the photographer next to his car (for checking the lot)
+              if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('spawn') === 'parking') {
+                player.x = PLAYER_CAR_TRUNK_SPOT.x;
+                player.y = PLAYER_CAR_TRUNK_SPOT.y + 30;
+              }
             }
             updateArrivalPhase(simDt);
           } else {
@@ -5743,6 +5761,30 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               ctx.restore();
             },
           });
+          // Guests' cars in the other stalls (same angle/scale as the photographer's car)
+          for (const pc of PARKED_CARS) {
+            const pIso = worldToIso(pc.x, pc.y);
+            drawables.push({
+              sortY: pIso.y + 30,
+              draw: () => {
+                const img = parkedCarImgs.get(pc.sprite);
+                const cx = originX + pIso.x;
+                const cy = originY + pIso.y;
+                ctx.save();
+                ctx.fillStyle = 'rgba(5, 6, 10, 0.45)';
+                ctx.beginPath();
+                ctx.ellipse(cx - 4, cy + 6, 92, 44, 0, 0, Math.PI * 2);
+                ctx.fill();
+                if (img) {
+                  const w = 200;
+                  const h = (img.height / img.width) * w;
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.drawImage(img, Math.round(cx - w * 0.5), Math.round(cy - h * 0.6), Math.round(w), Math.round(h));
+                }
+                ctx.restore();
+              },
+            });
+          }
           // Lobby, courtyard and parking props (doors, plants, fountain, olive trees, lamps, signs)
           for (const d of getOutsideDrawables(ctx, originX, originY, discoBeatPhase / 2.8)) drawables.push(d);
         }

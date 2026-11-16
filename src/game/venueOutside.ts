@@ -71,6 +71,25 @@ export const STALLS_ROW_B: Array<{ x: number; y: number }> = [0, 1, 2, 3].map((i
 export const PLAYER_CAR = STALLS_ROW_A[1];
 export const PLAYER_CAR_TRUNK_SPOT = { x: PLAYER_CAR.x - 6, y: PLAYER_CAR.y + 92 };
 
+/** Guests' cars filling the other stalls (PixelLab hi-bit renders, same angle as the player's car). */
+export const PARKED_CAR_SPRITES = [
+  'white', 'black-suv', 'red-hatch', 'silver-van', 'blue-hybrid', 'yellow-taxi', 'beige-sedan',
+] as const;
+export type ParkedCarSprite = (typeof PARKED_CAR_SPRITES)[number];
+export const PARKED_CARS: Array<{ x: number; y: number; sprite: ParkedCarSprite }> = [
+  { ...STALLS_ROW_A[0], sprite: 'black-suv' },
+  { ...STALLS_ROW_A[2], sprite: 'white' },
+  { ...STALLS_ROW_A[3], sprite: 'silver-van' },
+  { ...STALLS_ROW_B[0], sprite: 'red-hatch' },
+  { ...STALLS_ROW_B[1], sprite: 'yellow-taxi' },
+  { ...STALLS_ROW_B[2], sprite: 'blue-hybrid' },
+  { ...STALLS_ROW_B[3], sprite: 'beige-sedan' },
+];
+
+function carBox(c: { x: number; y: number }) {
+  return { kind: 'box' as const, minX: c.x - 34, minY: c.y - 66, maxX: c.x + 34, maxY: c.y + 60 };
+}
+
 /** Props that block walking. */
 export const OUTSIDE_OBSTACLES: Array<
   { kind: 'box'; minX: number; minY: number; maxX: number; maxY: number } | { kind: 'circle'; x: number; y: number; r: number }
@@ -93,7 +112,9 @@ export const OUTSIDE_OBSTACLES: Array<
   { kind: 'circle', x: 870, y: 160, r: 16 },
   { kind: 'box', minX: 775, minY: 330, maxX: 830, maxY: 345 },
   // Photographer's car
-  { kind: 'box', minX: PLAYER_CAR.x - 34, minY: PLAYER_CAR.y - 66, maxX: PLAYER_CAR.x + 34, maxY: PLAYER_CAR.y + 60 },
+  carBox(PLAYER_CAR),
+  // Guests' cars
+  ...PARKED_CARS.map(carBox),
 ];
 
 // ---------------------------------------------------------------------------
