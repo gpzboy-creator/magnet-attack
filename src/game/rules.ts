@@ -54,6 +54,14 @@ export function worldToIso(worldX: number, worldY: number, zLift = 0): Vec2 {
   };
 }
 
+/**
+ * The chuppah stands in the courtyard (the ceremony happens outside). Its art was laid out around
+ * CHUPPAH_ART_ANCHOR in the hall; everything is drawn/placed shifted by CHUPPAH_SHIFT.
+ */
+export const CHUPPAH_ART_ANCHOR = { x: 115, y: -185 };
+export const CHUPPAH_POS = { x: 1380, y: -200 };
+export const CHUPPAH_SHIFT = { x: CHUPPAH_POS.x - CHUPPAH_ART_ANCHOR.x, y: CHUPPAH_POS.y - CHUPPAH_ART_ANCHOR.y };
+
 export type FloorObstacle =
   | { kind: 'circle'; x: number; y: number; r: number }
   | { kind: 'box'; minX: number; minY: number; maxX: number; maxY: number };
@@ -562,7 +570,8 @@ export interface VipEventState {
 }
 
 export function createVipEvent(seqIndex: number): VipEventState {
-  const kinds: VipEventKind[] = ['table_toast', 'hora_frenzy', 'chuppah_kiss'];
+  // The chuppah moment belongs to the ceremony in the courtyard, not to the dance-floor rotation
+  const kinds: VipEventKind[] = ['table_toast', 'hora_frenzy'];
   const kind = kinds[Math.abs(seqIndex) % kinds.length];
 
   if (kind === 'table_toast') {
@@ -594,7 +603,7 @@ export function createVipEvent(seqIndex: number): VipEventState {
       id: seqIndex + 1,
       kind: 'chuppah_kiss',
       titleHe: '💍 רגע שיא בחופה! צלם 2 תמונות של החתן והכלה!',
-      targetPos: { x: 115, y: -185 },
+      targetPos: { x: CHUPPAH_POS.x, y: CHUPPAH_POS.y },
       remainingSec: 15,
       totalSec: 15,
       photosCaptured: 0,

@@ -3,14 +3,16 @@
  *
  * Layout (world units, the hall floor is the square ±440; the route runs along +x):
  *   hall side door (x≈455) → LOBBY (marble, welcome sign, guest-book table, plants, sofa)
- *   → garden gate (x≈675) → COURTYARD (stone path, lawns, olive trees, fountain, string lights)
+ *   → garden gate (x≈675) → COURTYARD, twice the hall's floor area: a stone path down the middle,
+ *     the CEREMONY lawn to the north (chuppah, aisle, rows of white chairs) and a garden to the
+ *     south (fountain, olive trees, benches, lamps), string lights over both
  *   → PARKING (two rows of stalls along a central aisle, lamps; the photographer's car).
  *
  * Everything here is procedural Canvas2D in the game's 2:1 projection, except the cars, which are
  * sprites (see PARKED_CARS). Ground layers are drawn under the actors; props are returned as
  * depth-sorted drawables.
  */
-import { worldToIso } from './rules.ts';
+import { CHUPPAH_POS, worldToIso } from './rules.ts';
 
 export type Rect = { minX: number; maxX: number; minY: number; maxY: number };
 
@@ -19,10 +21,42 @@ export const HALL_EDGE_X = 440;
 export const HALL_EXIT: Rect = { minX: 250, maxX: 480, minY: 205, maxY: 268 };
 export const LOBBY: Rect = { minX: 470, maxX: 660, minY: 100, maxY: 370 };
 export const GARDEN_GATE: Rect = { minX: 650, maxX: 700, minY: 170, maxY: 305 };
-export const COURTYARD: Rect = { minX: 690, maxX: 910, minY: 40, maxY: 430 };
-export const PARKING: Rect = { minX: 900, maxX: 1380, minY: -70, maxY: 530 };
+/** 1100 × 1400 = twice the hall floor (880 × 880). */
+export const COURTYARD: Rect = { minX: 690, maxX: 1790, minY: -470, maxY: 930 };
+/** Stone path from the garden gate straight across the courtyard to the parking lot. */
+export const COURTYARD_PATH: Rect = { minX: 690, maxX: 1790, minY: 164, maxY: 311 };
+export const PARKING: Rect = { minX: 1780, maxX: 2260, minY: -70, maxY: 530 };
 /** Central driving aisle of the lot (cars park on both sides, trunks/fronts toward it). */
-export const PARKING_AISLE: Rect = { minX: 900, maxX: 1380, minY: 190, maxY: 285 };
+export const PARKING_AISLE: Rect = { minX: PARKING.minX, maxX: PARKING.maxX, minY: 190, maxY: 285 };
+
+/**
+ * Ceremony lawn (north of the path): the aisle runs along +x up to the chuppah's golden runway;
+ * rows of white chairs on both sides face the chuppah.
+ */
+export const CEREMONY_AISLE: Rect = { minX: 940, maxX: CHUPPAH_POS.x - 105, minY: CHUPPAH_POS.y - 1, maxY: CHUPPAH_POS.y + 57 };
+export const CEREMONY_CHAIR_ROWS: Array<{ x: number; y0: number; y1: number }> = [0, 1, 2, 3, 4, 5].flatMap((i) => {
+  const x = 980 + i * 40;
+  return [
+    { x, y0: CEREMONY_AISLE.minY - 130, y1: CEREMONY_AISLE.minY - 22 }, // north block
+    { x, y0: CEREMONY_AISLE.maxY + 22, y1: CEREMONY_AISLE.maxY + 130 }, // south block
+  ];
+});
+export const CEREMONY_CHAIR_SPACING = 27;
+
+/** Garden (south of the path). */
+export const FOUNTAIN_POS = { x: 1040, y: 620 };
+export const OLIVE_TREES: Array<[number, number]> = [
+  [760, 380], [760, 880], [1220, 420], [1520, 520], [1720, 380], [1330, 820], [900, 860], [1660, 860],
+  [760, -60], [760, -420], [1720, -420], [1720, 40], [1580, -60],
+];
+export const BENCHES: Array<{ x0: number; x1: number; y: number }> = [
+  { x0: 960, x1: 1015, y: 470 },
+  { x0: 1070, x1: 1125, y: 770 },
+  { x0: 1380, x1: 1435, y: 640 },
+];
+export const COURTYARD_LAMPS: Array<[number, number]> = [
+  [960, 150], [1240, 150], [1520, 150], [960, 325], [1240, 325], [1520, 325],
+];
 
 export const WALKABLE_OUTSIDE: Rect[] = [HALL_EXIT, LOBBY, GARDEN_GATE, COURTYARD, PARKING];
 
@@ -59,11 +93,11 @@ export const HALL_DOOR = { x: 445, y: 236 };
 /** Stall centres. Row A (north of the aisle) parks trunk-first toward the aisle (+y). */
 export const STALL_WIDTH = 120;
 export const STALLS_ROW_A: Array<{ x: number; y: number }> = [0, 1, 2, 3].map((i) => ({
-  x: 975 + i * STALL_WIDTH,
+  x: PARKING.minX + 75 + i * STALL_WIDTH,
   y: 110,
 }));
 export const STALLS_ROW_B: Array<{ x: number; y: number }> = [0, 1, 2, 3].map((i) => ({
-  x: 975 + i * STALL_WIDTH,
+  x: PARKING.minX + 75 + i * STALL_WIDTH,
   y: 370,
 }));
 
@@ -104,13 +138,13 @@ export const OUTSIDE_OBSTACLES: Array<
   { kind: 'box', minX: 525, minY: 330, maxX: 605, maxY: 360 },
   // Flower photo wall behind the photo spot
   { kind: 'box', minX: 548, minY: 186, maxX: 616, maxY: 196 },
-  // Courtyard: fountain, olive trees, benches
-  { kind: 'circle', x: 800, y: 110, r: 34 },
-  { kind: 'circle', x: 735, y: 360, r: 16 },
-  { kind: 'circle', x: 870, y: 360, r: 16 },
-  { kind: 'circle', x: 735, y: 75, r: 16 },
-  { kind: 'circle', x: 870, y: 160, r: 16 },
-  { kind: 'box', minX: 775, minY: 330, maxX: 830, maxY: 345 },
+  // Courtyard: fountain, olive trees, benches, lamps
+  { kind: 'circle', x: FOUNTAIN_POS.x, y: FOUNTAIN_POS.y, r: 34 },
+  ...OLIVE_TREES.map(([x, y]) => ({ kind: 'circle' as const, x, y, r: 16 })),
+  ...BENCHES.map((b) => ({ kind: 'box' as const, minX: b.x0, minY: b.y - 3, maxX: b.x1, maxY: b.y + 12 })),
+  ...COURTYARD_LAMPS.map(([x, y]) => ({ kind: 'circle' as const, x, y, r: 5 })),
+  // Ceremony: each row of white chairs is one solid strip (walk between the rows / down the aisle)
+  ...CEREMONY_CHAIR_ROWS.map((r) => ({ kind: 'box' as const, minX: r.x - 7, minY: r.y0 - 6, maxX: r.x + 7, maxY: r.y1 + 6 })),
   // Photographer's car
   carBox(PLAYER_CAR),
   // Guests' cars
@@ -218,31 +252,61 @@ export function drawOutsideGround(ctx: CanvasRenderingContext2D, ox: number, oy:
     }
   }
 
-  // --- COURTYARD: lawns + stone path + fountain basin ground ring
+  // --- COURTYARD: stone border, lawns north (ceremony) and south (garden), stone path in the middle
   ctx.fillStyle = '#4a4740';
   quad(ctx, ox, oy, COURTYARD);
   ctx.fill();
   ctx.fillStyle = '#1f3a25';
-  quad(ctx, ox, oy, { minX: COURTYARD.minX + 12, maxX: COURTYARD.maxX - 12, minY: COURTYARD.minY + 12, maxY: GARDEN_GATE.minY - 14 });
+  quad(ctx, ox, oy, { minX: COURTYARD.minX + 12, maxX: COURTYARD.maxX - 12, minY: COURTYARD.minY + 12, maxY: COURTYARD_PATH.minY - 8 });
   ctx.fill();
-  quad(ctx, ox, oy, { minX: COURTYARD.minX + 12, maxX: COURTYARD.maxX - 12, minY: GARDEN_GATE.maxY + 14, maxY: COURTYARD.maxY - 12 });
+  quad(ctx, ox, oy, { minX: COURTYARD.minX + 12, maxX: COURTYARD.maxX - 12, minY: COURTYARD_PATH.maxY + 8, maxY: COURTYARD.maxY - 12 });
   ctx.fill();
+  // mowing stripes
+  ctx.fillStyle = 'rgba(90, 150, 80, 0.07)';
+  for (let x = COURTYARD.minX + 12; x < COURTYARD.maxX - 12; x += 80) {
+    quad(ctx, ox, oy, { minX: x, maxX: Math.min(x + 40, COURTYARD.maxX - 12), minY: COURTYARD.minY + 12, maxY: COURTYARD_PATH.minY - 8 });
+    ctx.fill();
+    quad(ctx, ox, oy, { minX: x, maxX: Math.min(x + 40, COURTYARD.maxX - 12), minY: COURTYARD_PATH.maxY + 8, maxY: COURTYARD.maxY - 12 });
+    ctx.fill();
+  }
   // grass texture
   ctx.fillStyle = 'rgba(120, 190, 110, 0.18)';
-  for (let i = 0; i < 520; i++) {
+  for (let i = 0; i < 3600; i++) {
     const gx = COURTYARD.minX + 14 + hash(i + 31) * (COURTYARD.maxX - COURTYARD.minX - 28);
     const gy = COURTYARD.minY + 14 + hash(i + 77) * (COURTYARD.maxY - COURTYARD.minY - 28);
-    if (gy > GARDEN_GATE.minY - 14 && gy < GARDEN_GATE.maxY + 14) continue;
+    if (gy > COURTYARD_PATH.minY - 8 && gy < COURTYARD_PATH.maxY + 8) continue;
     const g = p(ox, oy, gx, gy);
     ctx.fillRect(Math.round(g.x), Math.round(g.y), 1, 2);
   }
   // stone path slabs
   ctx.strokeStyle = 'rgba(0,0,0,0.28)';
   ctx.fillStyle = '#6b665b';
-  quad(ctx, ox, oy, { minX: COURTYARD.minX, maxX: COURTYARD.maxX, minY: GARDEN_GATE.minY - 6, maxY: GARDEN_GATE.maxY + 6 });
+  quad(ctx, ox, oy, COURTYARD_PATH);
   ctx.fill();
-  for (let x = COURTYARD.minX; x < COURTYARD.maxX; x += 22) seg(ctx, ox, oy, x, GARDEN_GATE.minY - 6, x, GARDEN_GATE.maxY + 6);
-  seg(ctx, ox, oy, COURTYARD.minX, (GARDEN_GATE.minY + GARDEN_GATE.maxY) / 2, COURTYARD.maxX, (GARDEN_GATE.minY + GARDEN_GATE.maxY) / 2);
+  for (let x = COURTYARD_PATH.minX; x < COURTYARD_PATH.maxX; x += 22) seg(ctx, ox, oy, x, COURTYARD_PATH.minY, x, COURTYARD_PATH.maxY);
+  for (const y of [COURTYARD_PATH.minY + 49, COURTYARD_PATH.minY + 98]) seg(ctx, ox, oy, COURTYARD_PATH.minX, y, COURTYARD_PATH.maxX, y);
+  // a short path from the main path up to the ceremony aisle
+  ctx.fillStyle = '#6b665b';
+  quad(ctx, ox, oy, { minX: CEREMONY_AISLE.minX - 50, maxX: CEREMONY_AISLE.minX, minY: CEREMONY_AISLE.minY, maxY: COURTYARD_PATH.minY });
+  ctx.fill();
+  // ceremony aisle: white carpet with rose petals, leading to the chuppah's golden runway
+  ctx.fillStyle = '#f1ede4';
+  quad(ctx, ox, oy, CEREMONY_AISLE);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(201, 165, 74, 0.8)';
+  ctx.lineWidth = 1.5;
+  quad(ctx, ox, oy, { minX: CEREMONY_AISLE.minX + 3, maxX: CEREMONY_AISLE.maxX, minY: CEREMONY_AISLE.minY + 3, maxY: CEREMONY_AISLE.maxY - 3 });
+  ctx.stroke();
+  for (let i = 0; i < 160; i++) {
+    const g = p(
+      ox,
+      oy,
+      CEREMONY_AISLE.minX + 6 + hash(i + 501) * (CEREMONY_AISLE.maxX - CEREMONY_AISLE.minX - 12),
+      CEREMONY_AISLE.minY + 6 + hash(i + 907) * (CEREMONY_AISLE.maxY - CEREMONY_AISLE.minY - 12)
+    );
+    ctx.fillStyle = i % 3 === 0 ? '#f9a8d4' : i % 3 === 1 ? '#fecdd3' : '#ffffff';
+    ctx.fillRect(Math.round(g.x), Math.round(g.y), 2, 1);
+  }
 
   // --- LOBBY: marble tiles + rug + back wall
   ctx.fillStyle = '#cdbfa8';
@@ -645,34 +709,46 @@ function sofa(ctx: CanvasRenderingContext2D, ox: number, oy: number, r: Rect) {
   face(r.minX, r.minY, r.maxX, r.minY, 0, seat, '#4a2236');
 }
 
-function stringLights(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: number) {
-  const poles = [
-    { x: COURTYARD.minX + 10, y: COURTYARD.minY + 10 },
-    { x: COURTYARD.maxX - 10, y: COURTYARD.minY + 10 },
-    { x: COURTYARD.maxX - 10, y: COURTYARD.maxY - 10 },
-    { x: COURTYARD.minX + 10, y: COURTYARD.maxY - 10 },
+/** Courtyard string lights: zig-zag strands between poles along the path, and a canopy over the ceremony. */
+const LIGHT_STRANDS: Array<[{ x: number; y: number }, { x: number; y: number }]> = (() => {
+  const out: Array<[{ x: number; y: number }, { x: number; y: number }]> = [];
+  const north = COURTYARD_PATH.minY - 14;
+  const south = COURTYARD_PATH.maxY + 14;
+  const xs = [710, 960, 1240, 1520, 1770];
+  for (let i = 0; i < xs.length - 1; i++) {
+    out.push([{ x: xs[i], y: north }, { x: xs[i + 1], y: south }]);
+    out.push([{ x: xs[i], y: south }, { x: xs[i + 1], y: north }]);
+  }
+  const c = [
+    { x: 940, y: CEREMONY_AISLE.minY - 170 },
+    { x: 1440, y: CEREMONY_AISLE.minY - 170 },
+    { x: 1440, y: CEREMONY_AISLE.maxY + 170 },
+    { x: 940, y: CEREMONY_AISLE.maxY + 170 },
   ];
+  out.push([c[0], c[2]], [c[1], c[3]], [c[0], c[1]], [c[3], c[2]]);
+  return out;
+})();
+
+function stringLights(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: number) {
   const H = 95;
   ctx.save();
   ctx.fillStyle = '#2a2420';
-  for (const pl of poles) {
+  const poles = new Map<string, { x: number; y: number }>();
+  for (const [a, b] of LIGHT_STRANDS) for (const q of [a, b]) poles.set(`${q.x},${q.y}`, q);
+  for (const pl of poles.values()) {
     const b = p(ox, oy, pl.x, pl.y);
     ctx.fillRect(Math.round(b.x - 1.5), Math.round(b.y - H), 3, H);
   }
-  const pairs = [
-    [poles[0], poles[2]],
-    [poles[1], poles[3]],
-    [poles[0], poles[1]],
-    [poles[3], poles[2]],
-  ];
-  pairs.forEach(([a, b], k) => {
-    const n = 14;
+  LIGHT_STRANDS.forEach(([a, b], k) => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = Math.max(8, Math.round(len / 22));
+    const sagAmp = Math.min(40, 10 + len * 0.05);
     ctx.strokeStyle = 'rgba(40, 32, 28, 0.9)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i <= n; i++) {
       const u = i / n;
-      const sag = Math.sin(u * Math.PI) * 26;
+      const sag = Math.sin(u * Math.PI) * sagAmp;
       const q = p(ox, oy, a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, H - sag);
       if (i === 0) ctx.moveTo(q.x, q.y);
       else ctx.lineTo(q.x, q.y);
@@ -680,7 +756,7 @@ function stringLights(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: 
     ctx.stroke();
     for (let i = 1; i < n; i++) {
       const u = i / n;
-      const sag = Math.sin(u * Math.PI) * 26;
+      const sag = Math.sin(u * Math.PI) * sagAmp;
       const q = p(ox, oy, a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, H - sag - 3);
       const tw = 0.65 + 0.35 * Math.sin(t * 3 + i * 1.7 + k);
       ctx.fillStyle = `rgba(255, 214, 140, ${tw})`;
@@ -689,6 +765,49 @@ function stringLights(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: 
       ctx.fill();
     }
   });
+  ctx.restore();
+}
+
+/** White folding ceremony chair (seat + back), facing +x toward the chuppah. */
+function ceremonyChair(ctx: CanvasRenderingContext2D, ox: number, oy: number, x: number, y: number) {
+  const face = (pts: Array<[number, number, number]>, fill: string) => {
+    ctx.beginPath();
+    pts.forEach(([wx, wy, wz], i) => {
+      const q = p(ox, oy, wx, wy, wz);
+      if (i === 0) ctx.moveTo(q.x, q.y);
+      else ctx.lineTo(q.x, q.y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+  };
+  ctx.save();
+  // shadow
+  const s0 = p(ox, oy, x, y);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(s0.x, s0.y, 9, 4.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // legs
+  ctx.strokeStyle = '#d6d3d1';
+  ctx.lineWidth = 1.2;
+  for (const [dx, dy] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) {
+    const a = p(ox, oy, x + dx, y + dy, 0);
+    const b = p(ox, oy, x + dx, y + dy, 14);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  // seat
+  face([[x - 7, y - 7, 14], [x + 7, y - 7, 14], [x + 7, y + 7, 14], [x - 7, y + 7, 14]], '#fafaf9');
+  face([[x - 7, y + 7, 14], [x + 7, y + 7, 14], [x + 7, y + 7, 12], [x - 7, y + 7, 12]], '#d6d3d1');
+  // back (on the -x side, so the seat faces the chuppah)
+  face([[x - 7, y - 7, 14], [x - 7, y + 7, 14], [x - 7, y + 7, 34], [x - 7, y - 7, 34]], '#f5f5f4');
+  ctx.strokeStyle = 'rgba(168, 162, 158, 0.9)';
+  ctx.lineWidth = 1;
+  seg(ctx, ox, oy, x - 7, y - 7, x - 7, y + 7, 27);
+  seg(ctx, ox, oy, x - 7, y - 7, x - 7, y + 7, 20);
   ctx.restore();
 }
 
@@ -750,17 +869,17 @@ export function getOutsideDrawables(ctx: CanvasRenderingContext2D, ox: number, o
     list.push({ sortY: at(x, y), draw: () => pottedPlant(ctx, ox, oy, x, y) });
   }
   list.push({ sortY: at(605, 360), draw: () => sofa(ctx, ox, oy, { minX: 525, maxX: 605, minY: 330, maxY: 360 }) });
-  // Courtyard
-  list.push({ sortY: at(800, 110), draw: () => fountain(ctx, ox, oy, 800, 110, t) });
-  for (const [x, y] of [
-    [735, 360],
-    [870, 360],
-    [735, 75],
-    [870, 160],
-  ]) {
-    list.push({ sortY: at(x, y), draw: () => oliveTree(ctx, ox, oy, x, y, t) });
+  // Courtyard: garden (south)
+  list.push({ sortY: at(FOUNTAIN_POS.x, FOUNTAIN_POS.y), draw: () => fountain(ctx, ox, oy, FOUNTAIN_POS.x, FOUNTAIN_POS.y, t) });
+  for (const [x, y] of OLIVE_TREES) list.push({ sortY: at(x, y), draw: () => oliveTree(ctx, ox, oy, x, y, t) });
+  for (const bn of BENCHES) list.push({ sortY: at(bn.x1, bn.y + 12), draw: () => bench(ctx, ox, oy, bn.x0, bn.x1, bn.y) });
+  for (const [x, y] of COURTYARD_LAMPS) list.push({ sortY: at(x, y), draw: () => streetLamp(ctx, ox, oy, x, y, t) });
+  // Ceremony (north): rows of white chairs facing the chuppah
+  for (const r of CEREMONY_CHAIR_ROWS) {
+    for (let y = r.y0; y <= r.y1 + 0.1; y += CEREMONY_CHAIR_SPACING) {
+      list.push({ sortY: at(r.x, y), draw: () => ceremonyChair(ctx, ox, oy, r.x, y) });
+    }
   }
-  list.push({ sortY: at(830, 345), draw: () => bench(ctx, ox, oy, 775, 830, 333) });
   list.push({ sortY: at(COURTYARD.maxX, COURTYARD.maxY) + 400, draw: () => stringLights(ctx, ox, oy, t) });
   // Parking
   for (const [x, y] of [

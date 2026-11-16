@@ -57,6 +57,8 @@ import {
   stepMagnetDeliveryTracker,
   updateWorkstationChairState,
   worldToIso,
+  CHUPPAH_POS,
+  CHUPPAH_SHIFT,
 } from '../game/rules';
 import { FlashEngine, FlashProjector, isTargetInCone } from '../game/flashEngine';
 import {
@@ -449,15 +451,22 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   },
   // DJ stage platform + booth
   { kind: 'box', minX: -148, minY: -276, maxX: -50, maxY: -228 },
-  // Chuppah stage platform
-  { kind: 'box', minX: 78, minY: -215, maxX: 152, maxY: -151 },
-  // White lounge benches & floral pedestals by the chuppah runway
-  { kind: 'circle', x: 36, y: -186, r: 9 },
-  { kind: 'circle', x: 68, y: -186, r: 9 },
-  { kind: 'circle', x: 36, y: -124, r: 9 },
-  { kind: 'circle', x: 68, y: -124, r: 9 },
-  { kind: 'circle', x: 20, y: -182, r: 6 },
-  { kind: 'circle', x: 20, y: -128, r: 6 },
+  // Chuppah (in the courtyard): stage platform, white lounge benches & floral pedestals by its runway
+  ...(
+    [
+      { kind: 'box', minX: 78, minY: -215, maxX: 152, maxY: -151 },
+      { kind: 'circle', x: 36, y: -186, r: 9 },
+      { kind: 'circle', x: 68, y: -186, r: 9 },
+      { kind: 'circle', x: 36, y: -124, r: 9 },
+      { kind: 'circle', x: 68, y: -124, r: 9 },
+      { kind: 'circle', x: 20, y: -182, r: 6 },
+      { kind: 'circle', x: 20, y: -128, r: 6 },
+    ] as FloorObstacle[]
+  ).map((o): FloorObstacle =>
+    o.kind === 'box'
+      ? { ...o, minX: o.minX + CHUPPAH_SHIFT.x, maxX: o.maxX + CHUPPAH_SHIFT.x, minY: o.minY + CHUPPAH_SHIFT.y, maxY: o.maxY + CHUPPAH_SHIFT.y }
+      : { ...o, x: o.x + CHUPPAH_SHIFT.x, y: o.y + CHUPPAH_SHIFT.y }
+  ),
   // Dancefloor subwoofer
   { kind: 'box', minX: -102, minY: 56, maxX: -76, maxY: 80 },
   // Magnet workstation desk (the chair in front of it stays reachable)
@@ -2009,8 +2018,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // THE BRIDE & GROOM — unique VIP actors (cast sheet sprites)
     // ======================================================================
     const COUPLE_CHUPPAH_SPOTS = [
-      { x: 128, y: -162 }, // bride
-      { x: 112, y: -175 }, // groom
+      { x: 128 + CHUPPAH_SHIFT.x, y: -162 + CHUPPAH_SHIFT.y }, // bride
+      { x: 112 + CHUPPAH_SHIFT.x, y: -175 + CHUPPAH_SHIFT.y }, // groom
     ];
     const COUPLE_ROAM_SPOTS = [
       { x: 0, y: 2 }, // middle of the dance floor
@@ -4463,7 +4472,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       drawOutsideGround(ctx, originX, originY, discoBeatPhase / 2.8);
       drawHallFloor(ctx, originX, originY, floorSize, tileStep);
       drawGoboProjections(ctx, originX, originY, discoBeatPhase / 2.8);
-      drawChuppahRunway(ctx, originX, originY, discoBeatPhase);
+      // The chuppah and its runway stand in the courtyard: the art is drawn shifted by CHUPPAH_SHIFT
+      const chuppahShiftIso = worldToIso(CHUPPAH_SHIFT.x, CHUPPAH_SHIFT.y);
+      drawChuppahRunway(ctx, originX + chuppahShiftIso.x, originY + chuppahShiftIso.y, discoBeatPhase);
 
       // Rose petals & metallic confetti on the floor
       for (const petal of floorPetals) {
@@ -4721,11 +4732,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
       // 2C. All-White Draped Chuppah with Baby's-Breath Crown, White Lounge Benches, Lanterns & Floral Pedestals (photos 7, 8, 9)
-      const chuppahIso = worldToIso(115, -185);
+      const chuppahIso = worldToIso(CHUPPAH_POS.x, CHUPPAH_POS.y);
       drawables.push({
         sortY: chuppahIso.y,
         draw: () => {
-          drawPixelHatzarChuppah(ctx, originX, originY, discoBeatPhase, drawIsoBox);
+          drawPixelHatzarChuppah(ctx, originX + chuppahShiftIso.x, originY + chuppahShiftIso.y, discoBeatPhase, drawIsoBox);
         },
       });
 
@@ -4739,7 +4750,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       for (let idx = 0; idx < chuppahGuests.length; idx++) {
         const cg = chuppahGuests[idx];
-        const cgIso = worldToIso(cg.wx, cg.wy);
+        const cgIso = worldToIso(cg.wx + CHUPPAH_SHIFT.x, cg.wy + CHUPPAH_SHIFT.y);
         drawables.push({
           sortY: cgIso.y,
           draw: () => {
@@ -4748,10 +4759,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               role: 'dancer',
               outfitIndex: idx,
               archetype: 'swarmer',
-              x: cg.wx,
-              y: cg.wy,
-              homeX: cg.wx,
-              homeY: cg.wy,
+              x: cg.wx + CHUPPAH_SHIFT.x,
+              y: cg.wy + CHUPPAH_SHIFT.y,
+              homeX: cg.wx + CHUPPAH_SHIFT.x,
+              homeY: cg.wy + CHUPPAH_SHIFT.y,
               vx: 0,
               vy: 0,
               speed: 0,
