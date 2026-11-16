@@ -136,7 +136,16 @@ import {
   wantsToApproachPhotographer,
 } from '../game/guestBehavior';
 import { FrameSubject, MagnetLedger, scoreCaptureExtras, scoreFrame } from '../game/photoScoring';
-import { drawParkingLot, drawParkingSign, drawStreetLamp } from '../game/parkingPixelArt';
+import {
+  HALL_EXIT,
+  OUTSIDE_OBSTACLES,
+  PLAYER_CAR,
+  PLAYER_CAR_TRUNK_SPOT,
+  doorwaySlideTarget,
+  drawOutsideGround,
+  getOutsideDrawables,
+  isWalkableOutside,
+} from '../game/venueOutside';
 import {
   CarriedLoad,
   EMPTY_LOAD,
@@ -371,10 +380,9 @@ const STATION_INTERACTION_RADIUS = 95;
 // OUTSIDE: parking lot with the photographer's car (supplies: magnet sheets, toner, repair kit)
 // Reached through the hall's side exit next to the front-right corner.
 // ---------------------------------------------------------------------------
-const HALL_EXIT = { minX: 250, maxX: 480, minY: 205, maxY: 268 }; // walkway from the hall to the lot
-const PARKING_LOT = { minX: 470, maxX: 780, minY: 70, maxY: 440 };
-const CAR_POS = { x: 625, y: 230 }; // car centre (parked lengthwise, trunk toward +y)
-const CAR_TRUNK_SPOT = { x: 618, y: 318 };
+// The photographer's car lives in the parking lot outside (venueOutside.ts: lobby → courtyard → parking)
+const CAR_POS = PLAYER_CAR;
+const CAR_TRUNK_SPOT = PLAYER_CAR_TRUNK_SPOT;
 const CAR_TRUNK_RADIUS = 36;
 const movingHeads = getMovingHeads();
 // Where the photographer stands to operate the guillotine cutter (in front of the desk's right end,
@@ -422,12 +430,9 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   { kind: 'box', minX: WORKSTATION_POS.x - 70, minY: WORKSTATION_POS.y - 28, maxX: WORKSTATION_POS.x + 46, maxY: WORKSTATION_POS.y + 22 },
   // Tripod magnet board easel
   { kind: 'circle', x: TRIPOD_BOARD_POS.x, y: TRIPOD_BOARD_POS.y, r: 10 },
-  // The photographer's car in the parking lot
-  { kind: 'box', minX: CAR_POS.x - 34, minY: CAR_POS.y - 70, maxX: CAR_POS.x + 34, maxY: CAR_POS.y + 62 },
+  // Outside: lobby furniture, courtyard fountain / trees / bench, the photographer's car
+  ...OUTSIDE_OBSTACLES,
 ];
-
-const insideRect = (r: { minX: number; maxX: number; minY: number; maxY: number }, x: number, y: number) =>
-  x >= r.minX && x <= r.maxX && y >= r.minY && y <= r.maxY;
 
 export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
   gameState,
@@ -2793,7 +2798,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
             // Walkable: the hall, the side-exit walkway and the parking lot outside
             const walkable = (x: number, y: number) =>
-              Math.hypot(x, y) <= ARENA_RADIUS || insideRect(HALL_EXIT, x, y) || insideRect(PARKING_LOT, x, y);
+              Math.hypot(x, y) <= ARENA_RADIUS || isWalkableOutside(x, y);
             if (!walkable(player.x, player.y)) {
               if (walkable(player.x, prevY)) {
                 player.y = prevY;
@@ -2802,6 +2807,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               } else if (walkable(prevX, prevY)) {
                 player.x = prevX;
                 player.y = prevY;
+                // Pushing against a wall next to a doorway: slide toward the opening
+                const slideY = doorwaySlideTarget(player.x, player.y);
+                if (slideY !== null) {
+                  const stepY = Math.sign(slideY - player.y) * Math.min(Math.abs(slideY - player.y), moveSpeed * simDt);
+                  if (walkable(player.x, player.y + stepY)) player.y += stepY;
+                }
               } else {
                 const distFromCenter = Math.hypot(player.x, player.y);
                 player.x = (player.x / distFromCenter) * ARENA_RADIUS;
@@ -4065,8 +4076,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         }
 
         const targetIso = worldToIso(player.x, player.y);
-        camX += (targetIso.x * 0.55 - camX) * Math.min(1, dt * 8);
-        camY += (targetIso.y * 0.55 - camY) * Math.min(1, dt * 8);
+        // Inside the hall the camera keeps the room framed; outside it follows the photographer fully
+        const outsideK = Math.max(0, Math.min(1, (player.x - 360) / 220));
+        const follow = 0.55 + 0.45 * outsideK;
+        camX += (targetIso.x * follow - camX) * Math.min(1, dt * 8);
+        camY += (targetIso.y * follow - camY) * Math.min(1, dt * 8);
       }
 
       // Update Flying Magnets
@@ -4121,7 +4135,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const floorSize = 440;
       const tileStep = 55;
       // Outside: the parking lot behind the side exit (drawn first; the hall floor overlaps the doorway)
-      drawParkingLot(ctx, originX, originY, PARKING_LOT, HALL_EXIT, floorSize, CAR_POS.x, discoBeatPhase / 2.8);
+      drawOutsideGround(ctx, originX, originY, discoBeatPhase / 2.8);
       drawHallFloor(ctx, originX, originY, floorSize, tileStep);
       drawGoboProjections(ctx, originX, originY, discoBeatPhase / 2.8);
       drawChuppahRunway(ctx, originX, originY, discoBeatPhase);
@@ -5466,18 +5480,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               ctx.restore();
             },
           });
-          const lampWX = PARKING_LOT.maxX - 40;
-          const lampWY = PARKING_LOT.minY + 40;
-          drawables.push({
-            sortY: worldToIso(lampWX, lampWY).y,
-            draw: () => drawStreetLamp(ctx, originX, originY, lampWX, lampWY, discoBeatPhase / 2.8),
-          });
-          const signWX = HALL_EXIT.maxX + 6;
-          const signWY = HALL_EXIT.minY - 14;
-          drawables.push({
-            sortY: worldToIso(signWX, signWY).y,
-            draw: () => drawParkingSign(ctx, originX, originY, signWX, signWY),
-          });
+          // Lobby, courtyard and parking props (doors, plants, fountain, olive trees, lamps, signs)
+          for (const d of getOutsideDrawables(ctx, originX, originY, discoBeatPhase / 2.8)) drawables.push(d);
         }
 
         // Queue Roaming Catering Waiters with Silver Trays
