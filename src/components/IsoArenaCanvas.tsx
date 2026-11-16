@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { createDjState, updateDj, djFrame, napkinAlpha } from '../game/djNapkins';
 import {
   EnemyArchetype,
   GameState,
@@ -818,6 +819,22 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       };
       img.src = `${import.meta.env?.BASE_URL ?? '/'}assets/characters/dj-rotations.png`;
     }
+    // DJ animations: row 0 = hands on the mixer (loop), row 1 = overhead napkin throw; 236px cells, feet at y=201
+    let djAnimSheet: HTMLImageElement | null = null;
+    {
+      const img = new Image();
+      img.onload = () => {
+        if (!seatedSheetDisposed) djAnimSheet = img;
+      };
+      img.src = `${import.meta.env?.BASE_URL ?? '/'}assets/characters/dj-anim.png`;
+    }
+    const djState = createDjState();
+    const DJ_DANCE_TARGETS = [
+      { x: -42, y: -32 },
+      { x: 42, y: -26 },
+      { x: -36, y: 38 },
+      { x: 38, y: 36 },
+    ];
     const parkedCarImgs = new Map<string, HTMLImageElement>();
     {
       const base = import.meta.env?.BASE_URL ?? '/';
@@ -2785,6 +2802,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const dt = clampDt(rawDt);
 
       discoBeatPhase += dt * 2.8;
+      updateDj(djState, dt, eventPhase === 'dancing', () => DJ_DANCE_TARGETS[Math.floor(Math.random() * DJ_DANCE_TARGETS.length)]);
       // Squash & stretch settles back to 1 on a damped spring (slight wobble = more life)
       const springX = stepScaleSpring(player.scaleX, player.scaleVelX, dt);
       const springY = stepScaleSpring(player.scaleY, player.scaleVelY, dt);
@@ -2870,6 +2888,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 player.x = -40;
                 player.y = -170;
               }
+              // Debug: ?phase=dancing skips the reception
+              if (new URLSearchParams(window.location.search).get('phase') === 'dancing') startDancingPhase();
+              if (new URLSearchParams(window.location.search).get('djthrow') === '1') djState.nextThrowIn = 1.5;
             }
             updateArrivalPhase(simDt);
           } else {
@@ -4502,23 +4523,71 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         draw: () => {
           drawPixelDjStageAndLedWall(ctx, originX, originY, discoBeatPhase, drawIsoBox, (fx, fy) => {
             if (!djSheet) return false;
-            const cell = djSheet.height;
-            // Looks around the floor: mostly toward the dancers (S / SW), now and then SE
-            const look = Math.floor(discoBeatPhase / 3.2) % 6;
-            const dirIdx = look === 2 ? 7 : look === 4 ? 1 : look === 5 ? 7 : 0;
             // Same on-screen size as the photographer (166px PixelLab figure ≈ 236px photographer cell content)
             const k = (236 * (128 / 352) * (characterConfigRef.current.photographerScale || 1.25)) / 166;
-            const bob = Math.abs(Math.sin(discoBeatPhase * 3)) * 2.5;
-            const w = cell * k;
-            const h = cell * k;
             ctx.save();
             ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(djSheet, dirIdx * cell, 0, cell, cell, Math.round(fx - w / 2), Math.round(fy - h + bob), Math.round(w), Math.round(h));
+            // Between mixes he glances around the floor (static SW / SE rotations)
+            const look = Math.floor(discoBeatPhase / 3.2) % 7;
+            if (djAnimSheet && !(djState.mode === 'mixer' && (look === 3 || look === 6))) {
+              const cell = 236;
+              const row = djState.mode === 'throw' ? 1 : 0;
+              const f = djFrame(djState);
+              const w = cell * k;
+              ctx.drawImage(djAnimSheet, f * cell, row * cell, cell, cell, Math.round(fx - 118 * k), Math.round(fy - 201 * k), Math.round(w), Math.round(w));
+            } else {
+              const cell = djSheet.height;
+              const dirIdx = look === 3 ? 7 : look === 6 ? 1 : 0;
+              const bob = Math.abs(Math.sin(discoBeatPhase * 3)) * 2.5;
+              const w = cell * k;
+              ctx.drawImage(djSheet, dirIdx * cell, 0, cell, cell, Math.round(fx - w / 2), Math.round(fy - w + bob), Math.round(w), Math.round(w));
+            }
             ctx.restore();
             return true;
           });
         },
       });
+
+      // DJ napkins: fluttering through the air, then lying on the dance floor
+      for (const n of djState.napkins) {
+        const ground = worldToIso(n.x, n.y, 0);
+        const air = worldToIso(n.x, n.y, n.z);
+        drawables.push({
+          sortY: ground.y + (n.landedFor < 0 ? 40 : -2),
+          draw: () => {
+            ctx.save();
+            ctx.globalAlpha = napkinAlpha(n);
+            if (n.landedFor < 0) {
+              ctx.fillStyle = 'rgba(0,0,0,0.25)';
+              ctx.fillRect(Math.round(originX + ground.x - 2), Math.round(originY + ground.y - 1), 4, 2);
+              ctx.translate(originX + air.x, originY + air.y);
+              ctx.rotate(n.angle);
+              ctx.scale(1, 0.45 + 0.55 * Math.abs(Math.sin(n.angle * 1.7)));
+              ctx.fillStyle = '#475569';
+              ctx.fillRect(-5, -5, 10, 10);
+              ctx.fillStyle = n.tint;
+              ctx.fillRect(-4, -4, 8, 8);
+              ctx.fillStyle = 'rgba(148,163,184,0.8)';
+              ctx.fillRect(-4, 3, 8, 1);
+            } else {
+              const gx = Math.round(originX + ground.x);
+              const gy = Math.round(originY + ground.y);
+              ctx.fillStyle = n.tint;
+              ctx.strokeStyle = 'rgba(71,85,105,0.9)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(gx - 7, gy);
+              ctx.lineTo(gx, gy - 3.5);
+              ctx.lineTo(gx + 7, gy);
+              ctx.lineTo(gx, gy + 3.5);
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+            }
+            ctx.restore();
+          },
+        });
+      }
 
       // Dancefloor Monitor Subwoofer with Pulsing Bass Rings
       const speakerIso = worldToIso(-88, 68);
