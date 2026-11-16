@@ -14,6 +14,7 @@
  */
 import { CHUPPAH_POS, worldToIso } from './rules.ts';
 import { BRIDGE_FOOT, POOL_OBSTACLES } from './chuppahIsland.ts';
+import { PROP_SPRITES, propFootprint } from './venueProps.ts';
 
 export type Rect = { minX: number; maxX: number; minY: number; maxY: number };
 
@@ -120,13 +121,13 @@ export const PHOTO_SPOT = { x: 1400, y: 400 };
 export const FLOWER_WALL = { x0: PHOTO_SPOT.x - 34, x1: PHOTO_SPOT.x + 34, y: PHOTO_SPOT.y - 45 };
 /** Where arriving guests come in (the main gate from the plaza) and the hall door they go to. */
 export const ARRIVAL_ENTRY = { x: COURTYARD_FENCE_X + 4, y: 236 };
-/** Reception: a bar and two food stations, cocktail tables. */
-export const RECEPTION_BAR: Rect = { minX: 1140, maxX: 1290, minY: 482, maxY: 512 };
+/** Reception: a bar with a flower pergola (PixelLab sprite, drawn by the game), two food stations, cocktail tables. */
+export const RECEPTION_BAR: Rect = propFootprint(PROP_SPRITES.bar, 1150, 590);
 export const FOOD_STATIONS: Rect[] = [
   { minX: 1440, maxX: 1530, minY: 520, maxY: 548 },
   { minX: 1590, maxX: 1680, minY: 520, maxY: 548 },
 ];
-export const COCKTAIL_TABLES: Array<[number, number]> = [[1210, 590], [1330, 560], [1520, 640], [1650, 620]];
+export const COCKTAIL_TABLES: Array<[number, number]> = [[1215, 630], [1330, 560], [1520, 640], [1650, 620]];
 export const HALL_DOOR = { x: 445, y: 236 };
 
 /** Stall centres. Row A (north of the aisle) parks trunk-first toward the aisle (+y). */
@@ -961,32 +962,6 @@ function kitchen(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: numbe
   label(ctx, c.x, c.y, 'מטבח · שירות', '#fde68a', 11);
 }
 
-function receptionBar(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: number) {
-  const r = RECEPTION_BAR;
-  isoBox(ctx, ox, oy, r, 36, '#1c1917', '#3f2a1d', '#5b3a26');
-  // bottles + glasses on the counter
-  const cols = ['#16a34a', '#b45309', '#e5e7eb', '#7c3aed', '#dc2626'];
-  for (let i = 0; i < 12; i++) {
-    const x = r.minX + 8 + i * ((r.maxX - r.minX - 16) / 11);
-    const b = p(ox, oy, x, (r.minY + r.maxY) / 2, 36);
-    ctx.fillStyle = cols[i % cols.length];
-    ctx.fillRect(Math.round(b.x - 1.5), Math.round(b.y - 10), 3, 10);
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillRect(Math.round(b.x - 0.5), Math.round(b.y - 13), 1, 3);
-  }
-  // warm under-glow
-  const g0 = p(ox, oy, (r.minX + r.maxX) / 2, r.maxY + 10);
-  const g = ctx.createRadialGradient(g0.x, g0.y, 2, g0.x, g0.y, 70);
-  g.addColorStop(0, `rgba(251, 191, 36, ${0.22 + 0.05 * Math.sin(t * 2)})`);
-  g.addColorStop(1, 'rgba(251, 191, 36, 0)');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.ellipse(g0.x, g0.y, 70, 35, 0, 0, Math.PI * 2);
-  ctx.fill();
-  const c = p(ox, oy, (r.minX + r.maxX) / 2, r.maxY, 64);
-  label(ctx, c.x, c.y, 'בר', '#fbbf24', 12);
-}
-
 function foodStation(ctx: CanvasRenderingContext2D, ox: number, oy: number, r: Rect, name: string) {
   isoBox(ctx, ox, oy, r, 30, '#fafaf9', '#e7e5e4', '#d6d3d1');
   for (let i = 0; i < 3; i++) {
@@ -1155,7 +1130,6 @@ export function getOutsideDrawables(ctx: CanvasRenderingContext2D, ox: number, o
   }
   // Reception garden by the gate: flower photo wall, bar, food stations, cocktail tables
   list.push({ sortY: at(PHOTO_SPOT.x, FLOWER_WALL.y), draw: () => flowerWall(ctx, ox, oy, t) });
-  list.push({ sortY: at(RECEPTION_BAR.maxX, RECEPTION_BAR.maxY), draw: () => receptionBar(ctx, ox, oy, t) });
   FOOD_STATIONS.forEach((r, i) => list.push({ sortY: at(r.maxX, r.maxY), draw: () => foodStation(ctx, ox, oy, r, i === 0 ? 'עמדת סושי' : 'עמדת גריל') }));
   for (const [x, y] of COCKTAIL_TABLES) list.push({ sortY: at(x, y), draw: () => cocktailTable(ctx, ox, oy, x, y) });
   list.push({ sortY: at(520, 135), draw: () => welcomeEasel(ctx, ox, oy, 520, 135) });

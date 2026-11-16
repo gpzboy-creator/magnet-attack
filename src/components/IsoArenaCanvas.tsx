@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { CHUPPAH_SPOTS, CHUPPAH_SPRITE, groundZ } from '../game/chuppahIsland';
+import { DJ_SET, PROP_SPRITES, drawPropSprite, type PropName } from '../game/venueProps';
 import { createDjState, updateDj, djFrame, napkinAlpha } from '../game/djNapkins';
 import {
   EnemyArchetype,
@@ -74,6 +75,7 @@ import {
 } from '../game/workstationPixelArt';
 import {
   drawPixelDjStageAndLedWall,
+  drawDjLedWall,
 } from '../game/venuePixelArt';
 import {
   BARTENDER_STATIONS,
@@ -152,6 +154,7 @@ import {
   HALL_EXIT,
   OUTSIDE_OBSTACLES,
   PLAYER_CAR,
+  RECEPTION_BAR,
   PARKED_CARS,
   PARKED_CAR_SPRITES,
   PLAYER_CAR_TRUNK_SPOT,
@@ -447,8 +450,8 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
     maxX: ISLAND_BAR.cx + ISLAND_BAR.half,
     maxY: ISLAND_BAR.cy + ISLAND_BAR.half,
   },
-  // DJ stage platform + booth
-  { kind: 'box', minX: -148, minY: -276, maxX: -50, maxY: -228 },
+  // DJ stage (PixelLab set)
+  { kind: 'box', ...DJ_SET.stage },
   // Dancefloor subwoofer
   { kind: 'box', minX: -102, minY: 56, maxX: -76, maxY: 80 },
   // Magnet workstation desk (the chair in front of it stays reachable)
@@ -834,6 +837,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       { x: -36, y: 38 },
       { x: 38, y: 36 },
     ];
+    const propImgs = new Map<PropName, HTMLImageElement>();
+    for (const name of Object.keys(PROP_SPRITES) as PropName[]) {
+      const img = new Image();
+      img.onload = () => {
+        if (!seatedSheetDisposed) propImgs.set(name, img);
+      };
+      img.src = `${import.meta.env?.BASE_URL ?? '/'}${PROP_SPRITES[name].file}`;
+    }
     let chuppahImg: HTMLImageElement | null = null;
     {
       const img = new Image();
@@ -4542,11 +4553,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       });
 
       // 2A-3. Raised DJ Stage, Giant Animated LED Video Wall & Cyan LED Booth (photos 6 & 13)
-      const djIso = worldToIso(-95, -245);
-      drawables.push({
-        sortY: djIso.y,
-        draw: () => {
-          drawPixelDjStageAndLedWall(ctx, originX, originY, discoBeatPhase, drawIsoBox, (fx, fy) => {
+      // DJ set (PixelLab): stage, LED wall, the DJ behind his console, the console in front of him
+      const djFront = worldToIso((DJ_SET.stage.minX + DJ_SET.stage.maxX) / 2, DJ_SET.stage.maxY);
+      const drawDjFigure = (fx: number, fy: number) => {
             if (!djSheet) return false;
             // Same on-screen size as the photographer (166px PixelLab figure ≈ 236px photographer cell content)
             const k = (236 * (128 / 352) * (characterConfigRef.current.photographerScale || 1.25)) / 166;
@@ -4569,7 +4578,22 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
             ctx.restore();
             return true;
-          });
+      };
+      drawables.push({
+        sortY: djFront.y,
+        draw: () => {
+          const st = propImgs.get('djStage');
+          const cn = propImgs.get('djConsole');
+          if (!st || !cn) {
+            drawPixelDjStageAndLedWall(ctx, originX, originY, discoBeatPhase, drawIsoBox, drawDjFigure);
+            return;
+          }
+          drawPropSprite(ctx, st, PROP_SPRITES.djStage, originX, originY, DJ_SET.stage.minX, DJ_SET.stage.maxY);
+          const w = DJ_SET.ledWall;
+          drawDjLedWall(ctx, originX, originY, discoBeatPhase, w.x0, w.x1, w.y, w.z0, w.height);
+          const feet = worldToIso(DJ_SET.feet.x, DJ_SET.feet.y, DJ_SET.stageZ);
+          drawDjFigure(originX + feet.x, originY + feet.y);
+          drawPropSprite(ctx, cn, PROP_SPRITES.djConsole, originX, originY, DJ_SET.console.minX, DJ_SET.console.maxY, DJ_SET.stageZ);
         },
       });
 
@@ -5917,6 +5941,17 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                   ctx.drawImage(img, Math.round(cx - w * 0.5), Math.round(cy - h * 0.6), Math.round(w), Math.round(h));
                 }
                 ctx.restore();
+              },
+            });
+          }
+          // The reception garden's bar (PixelLab)
+          {
+            const r = RECEPTION_BAR;
+            drawables.push({
+              sortY: worldToIso(r.maxX, r.maxY).y,
+              draw: () => {
+                const img = propImgs.get('bar');
+                if (img) drawPropSprite(ctx, img, PROP_SPRITES.bar, originX, originY, r.minX, r.maxY);
               },
             });
           }

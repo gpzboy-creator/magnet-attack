@@ -31,7 +31,7 @@ export const DJ_NAPKINS = {
   maxGapSec: 28,
   napkinsPerThrow: 40,
   /** Where the pack leaves his raised hand (world units, z = height). */
-  hand: { x: -98, y: -262, z: 118 },
+  hand: { x: -98, y: -275, z: 140 },
   /** Quick toss up and out of the pack… */
   tossSec: 0.6,
   /** …share of the horizontal distance covered during the toss (the rest drifts while floating). */
