@@ -398,7 +398,7 @@ const TRIPOD_BOARD_POS = { x: 96, y: -22 };
 const BOARD_INTERACTION_RADIUS = 85;
 
 // Far-Corner Magnet Production Workstation (עמדת מגנטים בפינת האולם רחוק מהאורחים ומהלוח: שולחן מלבני + מחשב נייד + מדפסת תרמית + ניירות הדבקה + חותך + כסא צלם)
-const WORKSTATION_POS = { x: 350, y: 35 };
+const WORKSTATION_POS = { x: 265, y: -262 }; // top-right corner of the hall (between the chuppah and the right-back wall)
 const WORKSTATION_CHAIR_POS = { x: WORKSTATION_POS.x - 8, y: WORKSTATION_POS.y + 34 };
 const STATION_INTERACTION_RADIUS = 95;
 
@@ -2887,6 +2887,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               } else if (spawn === 'dj') {
                 player.x = -40;
                 player.y = -170;
+              } else if (spawn && /^-?\d+,-?\d+$/.test(spawn)) {
+                const [sx, sy] = spawn.split(',').map(Number);
+                player.x = sx;
+                player.y = sy;
               }
               // Debug: ?phase=dancing skips the reception
               if (new URLSearchParams(window.location.search).get('phase') === 'dancing') startDancingPhase();

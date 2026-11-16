@@ -15,7 +15,7 @@ import { worldToIso } from './rules.ts';
 export type Rect = { minX: number; maxX: number; minY: number; maxY: number };
 
 export const HALL_EDGE_X = 440;
-/** Inside the hall up to the side door (passes the workstation corner). */
+/** Inside the hall up to the side door. */
 export const HALL_EXIT: Rect = { minX: 250, maxX: 480, minY: 205, maxY: 268 };
 export const LOBBY: Rect = { minX: 470, maxX: 660, minY: 100, maxY: 370 };
 export const GARDEN_GATE: Rect = { minX: 650, maxX: 700, minY: 170, maxY: 305 };
