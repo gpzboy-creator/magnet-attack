@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  COURTYARD_FENCE_X,
+  PARKING,
+  PHOTO_SPOT,
+  PLAZA,
+  SERVICE_EXIT,
   CEREMONY_AISLE,
   CEREMONY_CHAIR_ROWS,
   COURTYARD,
@@ -21,16 +26,14 @@ const blocked = (x: number, y: number) =>
       : Math.hypot(x - o.x, y - o.y) < o.r + R
   );
 
-test('outside: a walkable route leads from the hall exit through lobby and courtyard to the car trunk', () => {
+function reachable(start: { x: number; y: number }, goal: { x: number; y: number }, radius = 30) {
   const step = 8;
-  const start = { x: HALL_EXIT.minX + 20, y: (HALL_EXIT.minY + HALL_EXIT.maxY) / 2 };
   const key = (x: number, y: number) => `${x},${y}`;
   const seen = new Set([key(start.x, start.y)]);
   const q = [start];
-  let reached = false;
-  while (q.length && !reached) {
+  while (q.length) {
     const c = q.shift()!;
-    if (Math.hypot(c.x - PLAYER_CAR_TRUNK_SPOT.x, c.y - PLAYER_CAR_TRUNK_SPOT.y) < 30) reached = true;
+    if (Math.hypot(c.x - goal.x, c.y - goal.y) < radius) return true;
     for (const [dx, dy] of [[step, 0], [-step, 0], [0, step], [0, -step]]) {
       const n = { x: c.x + dx, y: c.y + dy };
       const k = key(n.x, n.y);
@@ -39,8 +42,25 @@ test('outside: a walkable route leads from the hall exit through lobby and court
       q.push(n);
     }
   }
-  assert.ok(reached);
+  return false;
+}
+
+test('back of house: from the hall service door to the car trunk (short, never through the guests)', () => {
+  const start = { x: SERVICE_EXIT.minX + 20, y: (SERVICE_EXIT.minY + SERVICE_EXIT.maxY) / 2 };
+  assert.ok(reachable(start, PLAYER_CAR_TRUNK_SPOT));
   assert.ok(!blocked(PLAYER_CAR_TRUNK_SPOT.x, PLAYER_CAR_TRUNK_SPOT.y), 'trunk spot is free');
+  assert.ok(Math.hypot(PLAYER_CAR_TRUNK_SPOT.x - SERVICE_EXIT.maxX, PLAYER_CAR_TRUNK_SPOT.y - SERVICE_EXIT.minY) < 200);
+  // the service yard is fenced off from the courtyard: no way into the guests' gardens from it
+  assert.ok(!reachable(start, PHOTO_SPOT, 20));
+});
+
+test('guests: parking -> buffer walkway -> plaza -> main gate -> reception garden -> lobby -> hall exit', () => {
+  const parking = { x: PARKING.minX + 40, y: 236 };
+  assert.ok(reachable(parking, { x: PLAZA.minX + 60, y: 236 }), 'parking to plaza');
+  assert.ok(reachable(parking, PHOTO_SPOT), 'plaza through the gate to the photo wall');
+  assert.ok(reachable(PHOTO_SPOT, { x: HALL_EXIT.minX + 20, y: 236 }), 'garden to the hall');
+  // the plaza and the courtyard only connect through the gate
+  assert.ok(!isWalkableOutside(COURTYARD_FENCE_X + 5, COURTYARD_PATH.minY - 30));
 });
 
 test('courtyard is twice the hall floor and holds the chuppah ceremony', () => {

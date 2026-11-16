@@ -50,7 +50,7 @@ export const ARRIVAL = {
   gapEndSec: 1.3,
   /** A partner arrives right behind. */
   partnerGapSec: 0.6,
-  walkSpeed: 64,
+  walkSpeed: 84,
   /** Total pose at the photo wall and its sweet spot (seconds into the pose). */
   poseSec: 2.0,
   peakStartSec: 0.5,
