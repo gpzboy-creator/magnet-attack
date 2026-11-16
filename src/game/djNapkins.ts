@@ -12,7 +12,18 @@ export const DJ_ANIM = {
   throwFrames: 9,
   throwFps: 10,
   releaseFrame: 4,
+  /** PixelLab "headphone cue": raises a hand and holds the headphone cup to his ear (9 frames). */
+  cueFrames: 9,
+  cueFps: 8,
+  /** Frames 6..8 = hand on the headphone; held (ping-pong) for cueHoldSec. */
+  cueHoldFrom: 6,
+  cueHoldSec: 2.2,
+  cueMinGapSec: 9,
+  cueMaxGapSec: 16,
 };
+
+/** Total duration of one cue gesture: raise, hold, lower. */
+export const CUE_TOTAL_SEC = (2 * DJ_ANIM.cueFrames) / DJ_ANIM.cueFps + DJ_ANIM.cueHoldSec;
 
 export const DJ_NAPKINS = {
   /** Seconds between throws while the party is dancing. */
@@ -47,11 +58,13 @@ export interface Napkin {
 }
 
 export interface DjState {
-  mode: 'mixer' | 'throw';
+  mode: 'mixer' | 'throw' | 'cue';
   /** Time inside the current animation. */
   animTime: number;
   /** Seconds until the next throw (only counts down when throws are enabled). */
   nextThrowIn: number;
+  /** Seconds until the next headphone cue gesture. */
+  nextCueIn: number;
   released: boolean;
   napkins: Napkin[];
   throwsDone: number;
@@ -60,7 +73,19 @@ export interface DjState {
 const TINTS = ['#ffffff', '#fdfcf7', '#f5f0e6', '#fff7ed'];
 
 export function createDjState(rand: () => number = Math.random): DjState {
-  return { mode: 'mixer', animTime: 0, nextThrowIn: gap(rand) * 0.6, released: false, napkins: [], throwsDone: 0 };
+  return {
+    mode: 'mixer',
+    animTime: 0,
+    nextThrowIn: gap(rand) * 0.6,
+    nextCueIn: cueGap(rand) * 0.5,
+    released: false,
+    napkins: [],
+    throwsDone: 0,
+  };
+}
+
+function cueGap(rand: () => number) {
+  return DJ_ANIM.cueMinGapSec + rand() * (DJ_ANIM.cueMaxGapSec - DJ_ANIM.cueMinGapSec);
 }
 
 function gap(rand: () => number) {
@@ -70,6 +95,19 @@ function gap(rand: () => number) {
 /** Current frame index of the active DJ animation. */
 export function djFrame(s: DjState): number {
   if (s.mode === 'throw') return Math.min(DJ_ANIM.throwFrames - 1, Math.floor(s.animTime * DJ_ANIM.throwFps));
+  if (s.mode === 'cue') {
+    const { cueFrames, cueFps, cueHoldFrom, cueHoldSec } = DJ_ANIM;
+    const up = cueFrames / cueFps;
+    const t = s.animTime;
+    if (t < up) return Math.min(cueFrames - 1, Math.floor(t * cueFps));
+    if (t < up + cueHoldSec) {
+      // ping-pong over the "hand on the headphone" frames, nodding to the beat
+      const span = cueFrames - 1 - cueHoldFrom;
+      const k = Math.floor((t - up) * 6) % (2 * span);
+      return cueFrames - 1 - (k <= span ? k : 2 * span - k);
+    }
+    return Math.max(0, cueFrames - 1 - Math.floor((t - up - cueHoldSec) * cueFps));
+  }
   return Math.floor(s.animTime * DJ_ANIM.mixerFps) % DJ_ANIM.mixerFrames;
 }
 
@@ -143,13 +181,21 @@ export function updateDj(
   let released = false;
   s.animTime += dt;
   if (s.mode === 'mixer') {
-    if (throwsEnabled) {
-      s.nextThrowIn -= dt;
-      if (s.nextThrowIn <= 0) {
-        s.mode = 'throw';
-        s.animTime = 0;
-        s.released = false;
-      }
+    s.nextCueIn -= dt;
+    if (throwsEnabled) s.nextThrowIn -= dt;
+    if (throwsEnabled && s.nextThrowIn <= 0) {
+      s.mode = 'throw';
+      s.animTime = 0;
+      s.released = false;
+    } else if (s.nextCueIn <= 0 && (!throwsEnabled || s.nextThrowIn > CUE_TOTAL_SEC + 1)) {
+      s.mode = 'cue';
+      s.animTime = 0;
+    }
+  } else if (s.mode === 'cue') {
+    if (s.animTime >= CUE_TOTAL_SEC) {
+      s.mode = 'mixer';
+      s.animTime = 0;
+      s.nextCueIn = cueGap(rand);
     }
   } else {
     if (!s.released && djFrame(s) >= DJ_ANIM.releaseFrame) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDjState, updateDj, spawnNapkins, stepNapkins, napkinAlpha, djFrame, DJ_ANIM, DJ_NAPKINS } from './djNapkins.ts';
+import { CUE_TOTAL_SEC, createDjState, updateDj, spawnNapkins, stepNapkins, napkinAlpha, djFrame, DJ_ANIM, DJ_NAPKINS } from './djNapkins.ts';
 
 function seeded(seed = 1) {
   let s = seed;
@@ -59,5 +59,26 @@ test('frames stay inside the sheets', () => {
     assert.ok(djFrame(s) < DJ_ANIM.mixerFrames);
     s.mode = 'throw';
     assert.ok(djFrame(s) < DJ_ANIM.throwFrames);
+    s.mode = 'cue';
+    const f = djFrame(s);
+    assert.ok(f >= 0 && f < DJ_ANIM.cueFrames);
   }
+});
+
+test('headphone cue: happens in every phase, holds the headphone, returns to frame 0 and the mixer', () => {
+  const s = createDjState(seeded(6));
+  let cues = 0;
+  let sawHold = false;
+  let prev = s.mode;
+  for (let t = 0; t < 60; t += 1 / 30) {
+    updateDj(s, 1 / 30, false, () => ({ x: 0, y: 0 }), seeded(6));
+    if (s.mode === 'cue' && prev !== 'cue') cues++;
+    if (s.mode === 'cue' && djFrame(s) >= DJ_ANIM.cueHoldFrom) sawHold = true;
+    prev = s.mode;
+  }
+  assert.ok(cues >= 2, `cues ${cues}`);
+  assert.ok(sawHold);
+  s.mode = 'cue';
+  s.animTime = CUE_TOTAL_SEC - 0.01;
+  assert.equal(djFrame(s), 0);
 });

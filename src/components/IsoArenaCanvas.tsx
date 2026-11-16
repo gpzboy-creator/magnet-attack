@@ -819,14 +819,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       };
       img.src = `${import.meta.env?.BASE_URL ?? '/'}assets/characters/dj-rotations.png`;
     }
-    // DJ animations: row 0 = hands on the mixer (loop), row 1 = overhead napkin throw; 236px cells, feet at y=201
+    // DJ animations: row 0 = hands on the mixer (loop), row 1 = overhead napkin throw, row 2 = headphone cue; 236px cells, feet at y=201
     let djAnimSheet: HTMLImageElement | null = null;
     {
       const img = new Image();
       img.onload = () => {
         if (!seatedSheetDisposed) djAnimSheet = img;
       };
-      img.src = `${import.meta.env?.BASE_URL ?? '/'}assets/characters/dj-anim.png`;
+      img.src = `${import.meta.env?.BASE_URL ?? '/'}assets/characters/dj-anim2.png`;
     }
     const djState = createDjState();
     const DJ_DANCE_TARGETS = [
@@ -4531,7 +4531,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             const look = Math.floor(discoBeatPhase / 3.2) % 7;
             if (djAnimSheet && !(djState.mode === 'mixer' && (look === 3 || look === 6))) {
               const cell = 236;
-              const row = djState.mode === 'throw' ? 1 : 0;
+              const row = djState.mode === 'throw' ? 1 : djState.mode === 'cue' ? 2 : 0;
               const f = djFrame(djState);
               const w = cell * k;
               ctx.drawImage(djAnimSheet, f * cell, row * cell, cell, cell, Math.round(fx - 118 * k), Math.round(fy - 201 * k), Math.round(w), Math.round(w));
