@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { CHUPPAH_SPOTS, CHUPPAH_SPRITE, groundZ } from '../game/chuppahIsland';
 import { createDjState, updateDj, djFrame, napkinAlpha } from '../game/djNapkins';
 import {
   EnemyArchetype,
@@ -58,7 +59,6 @@ import {
   updateWorkstationChairState,
   worldToIso,
   CHUPPAH_POS,
-  CHUPPAH_SHIFT,
 } from '../game/rules';
 import { FlashEngine, FlashProjector, isTargetInCone } from '../game/flashEngine';
 import {
@@ -73,9 +73,7 @@ import {
   drawPixelThermalPrinter,
 } from '../game/workstationPixelArt';
 import {
-  drawChuppahRunway,
   drawPixelDjStageAndLedWall,
-  drawPixelHatzarChuppah,
 } from '../game/venuePixelArt';
 import {
   BARTENDER_STATIONS,
@@ -451,22 +449,6 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   },
   // DJ stage platform + booth
   { kind: 'box', minX: -148, minY: -276, maxX: -50, maxY: -228 },
-  // Chuppah (in the courtyard): stage platform, white lounge benches & floral pedestals by its runway
-  ...(
-    [
-      { kind: 'box', minX: 78, minY: -215, maxX: 152, maxY: -151 },
-      { kind: 'circle', x: 36, y: -186, r: 9 },
-      { kind: 'circle', x: 68, y: -186, r: 9 },
-      { kind: 'circle', x: 36, y: -124, r: 9 },
-      { kind: 'circle', x: 68, y: -124, r: 9 },
-      { kind: 'circle', x: 20, y: -182, r: 6 },
-      { kind: 'circle', x: 20, y: -128, r: 6 },
-    ] as FloorObstacle[]
-  ).map((o): FloorObstacle =>
-    o.kind === 'box'
-      ? { ...o, minX: o.minX + CHUPPAH_SHIFT.x, maxX: o.maxX + CHUPPAH_SHIFT.x, minY: o.minY + CHUPPAH_SHIFT.y, maxY: o.maxY + CHUPPAH_SHIFT.y }
-      : { ...o, x: o.x + CHUPPAH_SHIFT.x, y: o.y + CHUPPAH_SHIFT.y }
-  ),
   // Dancefloor subwoofer
   { kind: 'box', minX: -102, minY: 56, maxX: -76, maxY: 80 },
   // Magnet workstation desk (the chair in front of it stays reachable)
@@ -852,6 +834,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       { x: -36, y: 38 },
       { x: 38, y: 36 },
     ];
+    let chuppahImg: HTMLImageElement | null = null;
+    {
+      const img = new Image();
+      img.onload = () => {
+        if (!seatedSheetDisposed) chuppahImg = img;
+      };
+      img.src = `${import.meta.env?.BASE_URL ?? '/'}${CHUPPAH_SPRITE.file}`;
+    }
     const parkedCarImgs = new Map<string, HTMLImageElement>();
     {
       const base = import.meta.env?.BASE_URL ?? '/';
@@ -2018,8 +2008,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // THE BRIDE & GROOM — unique VIP actors (cast sheet sprites)
     // ======================================================================
     const COUPLE_CHUPPAH_SPOTS = [
-      { x: 128 + CHUPPAH_SHIFT.x, y: -162 + CHUPPAH_SHIFT.y }, // bride
-      { x: 112 + CHUPPAH_SHIFT.x, y: -175 + CHUPPAH_SHIFT.y }, // groom
+      CHUPPAH_SPOTS.bride,
+      CHUPPAH_SPOTS.groom,
     ];
     const COUPLE_ROAM_SPOTS = [
       { x: 0, y: 2 }, // middle of the dance floor
@@ -4472,9 +4462,18 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       drawOutsideGround(ctx, originX, originY, discoBeatPhase / 2.8);
       drawHallFloor(ctx, originX, originY, floorSize, tileStep);
       drawGoboProjections(ctx, originX, originY, discoBeatPhase / 2.8);
-      // The chuppah and its runway stand in the courtyard: the art is drawn shifted by CHUPPAH_SHIFT
-      const chuppahShiftIso = worldToIso(CHUPPAH_SHIFT.x, CHUPPAH_SHIFT.y);
-      drawChuppahRunway(ctx, originX + chuppahShiftIso.x, originY + chuppahShiftIso.y, discoBeatPhase);
+      // The courtyard chuppah (PixelLab): pool, marble stage and footbridge as a 1:1 ground layer
+      const chuppahIso = worldToIso(CHUPPAH_POS.x, CHUPPAH_POS.y);
+      if (chuppahImg) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(
+          chuppahImg,
+          Math.round(originX + chuppahIso.x - CHUPPAH_SPRITE.anchorX),
+          Math.round(originY + chuppahIso.y - CHUPPAH_SPRITE.anchorY)
+        );
+        ctx.restore();
+      }
 
       // Rose petals & metallic confetti on the floor
       for (const petal of floorPetals) {
@@ -4732,37 +4731,49 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
       // 2C. All-White Draped Chuppah with Baby's-Breath Crown, White Lounge Benches, Lanterns & Floral Pedestals (photos 7, 8, 9)
-      const chuppahIso = worldToIso(CHUPPAH_POS.x, CHUPPAH_POS.y);
-      drawables.push({
-        sortY: chuppahIso.y,
-        draw: () => {
-          drawPixelHatzarChuppah(ctx, originX + chuppahShiftIso.x, originY + chuppahShiftIso.y, discoBeatPhase, drawIsoBox);
-        },
-      });
+      // The chuppah's front post: redrawn over anyone standing behind it on the stage
+      {
+        const fp = CHUPPAH_SPRITE.frontPost;
+        const postIso = worldToIso(CHUPPAH_POS.x + fp.worldDX, CHUPPAH_POS.y + fp.worldDY);
+        drawables.push({
+          sortY: postIso.y,
+          draw: () => {
+            if (!chuppahImg) return;
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            const x0 = Math.round(originX + chuppahIso.x - CHUPPAH_SPRITE.anchorX);
+            const y0 = Math.round(originY + chuppahIso.y - CHUPPAH_SPRITE.anchorY);
+            ctx.drawImage(chuppahImg, fp.sx, fp.sy, fp.sw, fp.sh, x0 + fp.sx, y0 + fp.sy, fp.sw, fp.sh);
+            ctx.restore();
+          },
+        });
+      }
 
       // VIP Lineup under Chuppah (Bride, Groom, Rabbi & Parents - without sign clutter!)
       const chuppahGuests = [
-        { wx: -52, wy: -205, outfit: '#334155', hair: '#3b2314', isDress: false, hat: 'green_top' as const, sign: null },
-        { wx: 15, wy: -225, outfit: '#1e293b', hair: '#78350f', isDress: false, hat: 'none' as const, sign: null },
-        { wx: 72, wy: -222, outfit: '#574636', hair: '#1c1410', isDress: false, hat: 'none' as const, sign: null },
+        // the rabbi under the canopy, the parents at the sides of the stage
+        { wx: CHUPPAH_SPOTS.rabbi.x, wy: CHUPPAH_SPOTS.rabbi.y, outfit: '#1e293b', hair: '#3b2314', isDress: false, hat: 'none' as const, sign: null },
+        { wx: CHUPPAH_SPOTS.parents[0].x, wy: CHUPPAH_SPOTS.parents[0].y, outfit: '#334155', hair: '#78350f', isDress: false, hat: 'none' as const, sign: null },
+        { wx: CHUPPAH_SPOTS.parents[1].x, wy: CHUPPAH_SPOTS.parents[1].y, outfit: '#574636', hair: '#1c1410', isDress: true, hat: 'none' as const, sign: null },
         // (the bride & groom are real actors now — see vipCouple)
       ];
 
       for (let idx = 0; idx < chuppahGuests.length; idx++) {
         const cg = chuppahGuests[idx];
-        const cgIso = worldToIso(cg.wx + CHUPPAH_SHIFT.x, cg.wy + CHUPPAH_SHIFT.y);
+        const cgIso = worldToIso(cg.wx, cg.wy, groundZ(cg.wx, cg.wy));
+        const cgSort = worldToIso(cg.wx, cg.wy).y;
         drawables.push({
-          sortY: cgIso.y,
+          sortY: cgSort,
           draw: () => {
             const dummyGuest: WeddingGuestActor = {
               id: 990 + idx,
               role: 'dancer',
               outfitIndex: idx,
               archetype: 'swarmer',
-              x: cg.wx + CHUPPAH_SHIFT.x,
-              y: cg.wy + CHUPPAH_SHIFT.y,
-              homeX: cg.wx + CHUPPAH_SHIFT.x,
-              homeY: cg.wy + CHUPPAH_SHIFT.y,
+              x: cg.wx,
+              y: cg.wy,
+              homeX: cg.wx,
+              homeY: cg.wy,
               vx: 0,
               vy: 0,
               speed: 0,
@@ -5494,7 +5505,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         sY = 1
       ) => {
         const isSeated = player.isSeatedAtStation;
-        const zLift = isSeated ? 4 : 0;
+        const zLift = (isSeated ? 4 : 0) + groundZ(worldX, worldY);
         const isoPos = worldToIso(worldX, worldY, zLift);
         const screenFootX = originX + isoPos.x;
         const screenFootY = originY + isoPos.y;
@@ -5811,7 +5822,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           const [bride, groom] = vipCouple;
           const mx = (bride.x + groom.x) / 2;
           const my = (bride.y + groom.y) / 2;
-          const mIso = worldToIso(mx, my);
+          const mIso = worldToIso(mx, my, groundZ(mx, my));
           const sheetNow = castSheet;
           drawables.push({
             sortY: mIso.y,
@@ -5853,10 +5864,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           });
         } else {
           for (const m of vipCouple) {
-            const mIso = worldToIso(m.x, m.y);
+            const mIso = worldToIso(m.x, m.y, groundZ(m.x, m.y));
             const snapshot: WeddingGuestActor = { ...m };
             drawables.push({
-              sortY: mIso.y,
+              sortY: worldToIso(m.x, m.y).y,
               draw: () => drawWeddingGuestSprite(originX + mIso.x, originY + mIso.y, snapshot, snapshot.strideDist, 1),
             });
           }

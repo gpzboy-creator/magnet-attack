@@ -59,3 +59,19 @@ test('courtyard is twice the hall floor and holds the chuppah ceremony', () => {
   // chairs stay off the main path
   for (const r of CEREMONY_CHAIR_ROWS) assert.ok(r.y1 + 6 < COURTYARD_PATH.minY && r.y0 > COURTYARD.minY);
 });
+
+test('chuppah island: the bridge leads from the aisle to the stage, the water blocks', async () => {
+  const { BRIDGE_FOOT, STAGE_RADIUS, POOL_RADIUS, groundZ, STAGE_TOP_Z } = await import('./chuppahIsland.ts');
+  // walk along the bridge axis from the aisle to the stage centre
+  for (let x = BRIDGE_FOOT.x - 20; x <= CHUPPAH_POS.x; x += 4) {
+    assert.ok(isWalkableOutside(x, CHUPPAH_POS.y) && !blocked(x, CHUPPAH_POS.y), `bridge/stage blocked at x=${x}`);
+  }
+  // the water ring is blocked everywhere except the bridge
+  const mid = (STAGE_RADIUS + POOL_RADIUS) / 2;
+  for (const deg of [0, 45, 90, 135, 225, 270, 315]) {
+    const a = (deg * Math.PI) / 180;
+    assert.ok(blocked(CHUPPAH_POS.x + Math.cos(a) * mid, CHUPPAH_POS.y + Math.sin(a) * mid), `water open at ${deg}°`);
+  }
+  assert.equal(groundZ(CHUPPAH_POS.x, CHUPPAH_POS.y), STAGE_TOP_Z);
+  assert.equal(groundZ(BRIDGE_FOOT.x - 30, CHUPPAH_POS.y), 0);
+});

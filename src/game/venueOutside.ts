@@ -13,6 +13,7 @@
  * depth-sorted drawables.
  */
 import { CHUPPAH_POS, worldToIso } from './rules.ts';
+import { BRIDGE_FOOT, POOL_OBSTACLES } from './chuppahIsland.ts';
 
 export type Rect = { minX: number; maxX: number; minY: number; maxY: number };
 
@@ -33,7 +34,7 @@ export const PARKING_AISLE: Rect = { minX: PARKING.minX, maxX: PARKING.maxX, min
  * Ceremony lawn (north of the path): the aisle runs along +x up to the chuppah's golden runway;
  * rows of white chairs on both sides face the chuppah.
  */
-export const CEREMONY_AISLE: Rect = { minX: 940, maxX: CHUPPAH_POS.x - 105, minY: CHUPPAH_POS.y - 1, maxY: CHUPPAH_POS.y + 57 };
+export const CEREMONY_AISLE: Rect = { minX: 940, maxX: BRIDGE_FOOT.x, minY: CHUPPAH_POS.y - 29, maxY: CHUPPAH_POS.y + 29 };
 export const CEREMONY_CHAIR_ROWS: Array<{ x: number; y0: number; y1: number }> = [0, 1, 2, 3, 4, 5].flatMap((i) => {
   const x = 980 + i * 40;
   return [
@@ -143,6 +144,8 @@ export const OUTSIDE_OBSTACLES: Array<
   ...OLIVE_TREES.map(([x, y]) => ({ kind: 'circle' as const, x, y, r: 16 })),
   ...BENCHES.map((b) => ({ kind: 'box' as const, minX: b.x0, minY: b.y - 3, maxX: b.x1, maxY: b.y + 12 })),
   ...COURTYARD_LAMPS.map(([x, y]) => ({ kind: 'circle' as const, x, y, r: 5 })),
+  // The chuppah's pool (open where the footbridge crosses)
+  ...POOL_OBSTACLES,
   // Ceremony: each row of white chairs is one solid strip (walk between the rows / down the aisle)
   ...CEREMONY_CHAIR_ROWS.map((r) => ({ kind: 'box' as const, minX: r.x - 7, minY: r.y0 - 6, maxX: r.x + 7, maxY: r.y1 + 6 })),
   // Photographer's car
