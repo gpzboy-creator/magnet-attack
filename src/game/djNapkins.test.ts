@@ -21,6 +21,15 @@ test('napkins land near the target, inside the spread', () => {
   }
 });
 
+test('napkins float down slowly: still in the air after 2s, a quick toss up first', () => {
+  let list = spawnNapkins({ x: 0, y: 0 }, seeded(8));
+  const z0 = list[0].z;
+  for (let t = 0; t < 0.4; t += 1 / 60) list = stepNapkins(list, 1 / 60);
+  assert.ok(list.every((n) => n.z > z0), 'tossed up');
+  for (let t = 0; t < 1.8; t += 1 / 60) list = stepNapkins(list, 1 / 60);
+  assert.ok(list.every((n) => n.landedFor < 0 && n.z > 0), 'still floating at ~2.2s');
+});
+
 test('napkins fade and disappear after lying on the floor', () => {
   let list = spawnNapkins({ x: 0, y: 0 }, seeded(5));
   const total = DJ_NAPKINS.flightMaxSec + DJ_NAPKINS.lieSec + DJ_NAPKINS.fadeSec + 0.5;

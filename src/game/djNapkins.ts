@@ -32,10 +32,19 @@ export const DJ_NAPKINS = {
   napkinsPerThrow: 16,
   /** Where the pack leaves his raised hand (world units, z = height). */
   hand: { x: -98, y: -262, z: 118 },
-  /** Paper falls slowly. */
-  gravity: 140,
-  flightMinSec: 1.1,
-  flightMaxSec: 1.6,
+  /** Quick toss up and out of the pack… */
+  tossSec: 0.45,
+  /** …share of the horizontal distance covered during the toss (the rest drifts while floating). */
+  tossShare: 0.35,
+  apexRiseMin: 28,
+  apexRiseMax: 55,
+  /** …then a slow paper float down (total time in the air). */
+  flightMinSec: 2.8,
+  flightMaxSec: 3.9,
+  /** Side-to-side sway while floating (world units) and its speed (rad/s). */
+  swayAmp: 12,
+  swayFreqMin: 3.2,
+  swayFreqMax: 5.2,
   /** How long they lie on the floor before fading out. */
   lieSec: 7,
   fadeSec: 1.2,
@@ -44,17 +53,28 @@ export const DJ_NAPKINS = {
 };
 
 export interface Napkin {
+  /** Current position (z = height above the floor). */
   x: number;
   y: number;
   z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  spin: number;
+  /** Rotation in the screen plane and how open/edge-on the paper is (0..1) — for drawing. */
   angle: number;
+  flutter: number;
   /** Seconds since landing (-1 while in the air). */
   landedFor: number;
   tint: string;
+  // trajectory
+  x0: number;
+  y0: number;
+  z0: number;
+  tx: number;
+  ty: number;
+  apexZ: number;
+  t: number;
+  T: number;
+  phase: number;
+  swayFreq: number;
+  baseAngle: number;
 }
 
 export interface DjState {
@@ -113,44 +133,77 @@ export function djFrame(s: DjState): number {
 
 /** Launch one pack of napkins toward a point on the floor. */
 export function spawnNapkins(target: { x: number; y: number }, rand: () => number = Math.random): Napkin[] {
-  const { hand, gravity, flightMinSec, flightMaxSec, spread, napkinsPerThrow } = DJ_NAPKINS;
+  const N = DJ_NAPKINS;
   const out: Napkin[] = [];
-  for (let i = 0; i < napkinsPerThrow; i++) {
+  for (let i = 0; i < N.napkinsPerThrow; i++) {
     const a = rand() * Math.PI * 2;
-    const r = Math.sqrt(rand()) * spread;
-    const tx = target.x + Math.cos(a) * r;
-    const ty = target.y + Math.sin(a) * r;
-    const T = flightMinSec + rand() * (flightMaxSec - flightMinSec);
-    out.push({
-      x: hand.x,
-      y: hand.y,
-      z: hand.z,
-      vx: (tx - hand.x) / T,
-      vy: (ty - hand.y) / T,
-      // reach z = 0 exactly at time T under gravity
-      vz: (0 - hand.z + 0.5 * gravity * T * T) / T,
-      spin: (rand() - 0.5) * 14,
-      angle: rand() * Math.PI,
+    const r = Math.sqrt(rand()) * N.spread;
+    const n: Napkin = {
+      x: N.hand.x,
+      y: N.hand.y,
+      z: N.hand.z,
+      angle: 0,
+      flutter: 1,
       landedFor: -1,
       tint: TINTS[Math.floor(rand() * TINTS.length)],
-    });
+      x0: N.hand.x,
+      y0: N.hand.y,
+      z0: N.hand.z,
+      tx: target.x + Math.cos(a) * r,
+      ty: target.y + Math.sin(a) * r,
+      apexZ: N.hand.z + N.apexRiseMin + rand() * (N.apexRiseMax - N.apexRiseMin),
+      t: 0,
+      T: N.flightMinSec + rand() * (N.flightMaxSec - N.flightMinSec),
+      phase: rand() * Math.PI * 2,
+      swayFreq: N.swayFreqMin + rand() * (N.swayFreqMax - N.swayFreqMin),
+      baseAngle: rand() * Math.PI,
+    };
+    placeNapkin(n);
+    out.push(n);
   }
   return out;
 }
 
+const easeOut = (u: number) => 1 - (1 - u) * (1 - u);
+
+/** Position along the toss-then-float path at time n.t. */
+function placeNapkin(n: Napkin) {
+  const N = DJ_NAPKINS;
+  const t = Math.min(n.t, n.T);
+  let prog: number;
+  let z: number;
+  let sway = 0;
+  if (t < N.tossSec) {
+    const u = easeOut(t / N.tossSec);
+    prog = u * N.tossShare;
+    z = n.z0 + (n.apexZ - n.z0) * u;
+  } else {
+    const u = (t - N.tossSec) / (n.T - N.tossSec);
+    prog = N.tossShare + (1 - N.tossShare) * u;
+    // starts hanging at the apex, then a steady slow fall, with a little up-down flutter
+    const fall = u < 0.15 ? (u / 0.15) * (u / 0.15) * 0.15 : u;
+    z = n.apexZ * (1 - fall) + Math.sin(t * n.swayFreq * 2 + n.phase) * 3 * (1 - u);
+    sway = Math.sin(t * n.swayFreq + n.phase) * N.swayAmp * Math.sqrt(1 - u);
+  }
+  // sway along the screen-horizontal world axis (1, -1) so it reads as side-to-side
+  n.x = n.x0 + (n.tx - n.x0) * prog + sway * 0.707;
+  n.y = n.y0 + (n.ty - n.y0) * prog - sway * 0.707;
+  n.z = Math.max(0, z);
+  n.angle = n.baseAngle + Math.sin(t * n.swayFreq + n.phase) * 0.9;
+  n.flutter = 0.3 + 0.7 * Math.abs(Math.cos(t * n.swayFreq * 1.3 + n.phase));
+}
+
 /** Advance napkins; returns the ones still alive. */
 export function stepNapkins(list: Napkin[], dt: number): Napkin[] {
-  const { gravity, lieSec, fadeSec } = DJ_NAPKINS;
+  const { lieSec, fadeSec } = DJ_NAPKINS;
   const alive: Napkin[] = [];
   for (const n of list) {
     if (n.landedFor < 0) {
-      n.x += n.vx * dt;
-      n.y += n.vy * dt;
-      n.vz -= gravity * dt;
-      n.z += n.vz * dt;
-      n.angle += n.spin * dt;
-      if (n.z <= 0) {
+      n.t += dt;
+      placeNapkin(n);
+      if (n.t >= n.T) {
         n.z = 0;
+        n.flutter = 1;
         n.landedFor = 0;
       }
     } else {

@@ -2890,7 +2890,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               }
               // Debug: ?phase=dancing skips the reception
               if (new URLSearchParams(window.location.search).get('phase') === 'dancing') startDancingPhase();
-              if (new URLSearchParams(window.location.search).get('djthrow') === '1') djState.nextThrowIn = 1.5;
+              if (new URLSearchParams(window.location.search).get('djthrow') === '1') djState.nextThrowIn = 4;
             }
             updateArrivalPhase(simDt);
           } else {
@@ -4562,7 +4562,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               ctx.fillRect(Math.round(originX + ground.x - 2), Math.round(originY + ground.y - 1), 4, 2);
               ctx.translate(originX + air.x, originY + air.y);
               ctx.rotate(n.angle);
-              ctx.scale(1, 0.45 + 0.55 * Math.abs(Math.sin(n.angle * 1.7)));
+              ctx.scale(1, n.flutter);
               ctx.fillStyle = '#475569';
               ctx.fillRect(-5, -5, 10, 10);
               ctx.fillStyle = n.tint;
