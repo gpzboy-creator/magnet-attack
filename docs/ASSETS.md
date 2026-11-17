@@ -19,6 +19,7 @@
 |---|---|---|---|---|
 | `characters/dj-rotations.png` | דיג'יי, 8 סיבובים (S,SE,E,NE,N,NW,W,SW), תאים 168px | PixelLab `create-character-pro`, `create_with_style`, רפרנס = פריים S של הצלם (168) | "Israeli wedding DJ, adult man about 30, short dark hair and trimmed beard, big black over-ear headphones around his neck, fitted black t-shirt, black jeans, white sneakers, silver watch…", seed 21. **Character ID:** `63a31281-1084-4458-a9d4-6dcfd8d79340` | 25 |
 | `characters/dj-anim2.png` | 3 שורות × 9 פריימים, תאים 236px, רגליים ב-y=201: מיקסר / זריקה / קיו באוזנייה | PixelLab `characters/animations`, `v3`, כיוון south, על הדמות למעלה | מיקסר: "both hands on a DJ mixer… seamless loop" (seed 5). זריקה: "raises his right arm high… throws forward… empty hands" (seed 9). קיו: "Both hands on the DJ controller… one headphone cup…" (seed 13 — יצא יד על האוזן) | 7 לכל אחת |
+| `characters/guest-man-suit-rotations.png` | אורח בסיס: גבר בחליפה נייבי, 8 סיבובים (S,SE,E,NE,N,NW,W,SW), תאים 168px. **עוד לא מחובר למשחק** | PixelLab `create-character-pro`, `create_with_style`, רפרנס = פריים S של הצלם (168) | "Israeli wedding guest, adult man about 35, short dark hair, clean-shaven, navy blue slim-fit suit, white shirt, thin dark tie, brown leather shoes, relaxed standing pose", seed 21. **Character ID:** `464b5f8e-55b4-441a-9993-32e70bdcc031`. התמונות נשלפו מתשובת ה-job (`background-jobs/<id>` → `last_response.images`), כי backblaze.pixellab.ai חסום בסביבה; גיליון: `tools/make_rotation_sheet.py` | 25 |
 | `aistudio/wedding-cast.png` | אורחים, חתן וכלה, משפחה (הגיליון הישן) | לפני PixelLab | — | **עדיפות #1 להחלפה** (ראו יומן) |
 
 נפסלו (לא בריפו): מפיות "מתפוצצות" (v3, seed 5), אוזנייה בין כתף לאוזן (v3, seed 31).
@@ -50,7 +51,7 @@
 
 ## סה"כ יצירות PixelLab שנוצלו (נכון ל-17.11)
 
-~370 מתוך 2,000 (נשארו ~1,630). בדיקת יתרה: `GET https://api.pixellab.ai/v2/balance`.
+~390 מתוך 2,000 (נשארו ~1,586). בדיקת יתרה: `GET https://api.pixellab.ai/v2/balance`.
 
 ## הוספת נכס חדש — צ'ק-ליסט
 
