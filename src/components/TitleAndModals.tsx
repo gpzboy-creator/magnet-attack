@@ -188,6 +188,10 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
             📱 בסמארטפון: ג'ויסטיק וכפתורי מגע · 💻 במחשב: WASD תנועה (ישיבה אוטומטית על כסא העמדה וקימה בתזוזה) · עכבר/J צילום · E פיתוח/חיתוך/הדבקה · Space ספרינט
           </div>
         </div>
+        {/* Build stamp: tells at a glance which version is on screen (cache vs. new deploy) */}
+        <div dir="ltr" className="fixed bottom-1 left-2 text-[10px] font-mono text-stone-400/80 pointer-events-none">
+          v {__BUILD_SHA__} · {__BUILD_DATE__}
+        </div>
       </div>
     );
   }

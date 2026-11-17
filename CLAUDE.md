@@ -11,6 +11,7 @@
 - **יומן הפרויקט** (מה בוצע, איפה עצרנו, החלטות): https://claude.ai/artifact/JGwArFX7UkTCHqUJDXB82F
 - **מפת דרכים** (Whiteboard, גאנט 8 שבועות): https://claude.ai/artifact/S3vWBA67vZQ53Af97FjGLW
 - **מפת פירוק הקוד:** [`docs/REFACTOR_MAP.md`](docs/REFACTOR_MAP.md)
+- **רשימת נכסים גרפיים** (מקור, פרומפט, seed, עלות): [`docs/ASSETS.md`](docs/ASSETS.md)
 
 ## טכנולוגיה
 
@@ -37,14 +38,16 @@ React + TypeScript + Vite, ציור ישיר על **Canvas2D** — אין מנו
 ```bash
 npm install
 npm run dev            # http://localhost:3000
-npm run lint           # tsc --noEmit
-npm test               # כל הבדיקות (כולל מגבלת הגודל)
+npm run lint           # tsc --noEmit + אסור משתנים/פרמטרים/ייבואים שלא בשימוש
+npm test               # כל הבדיקות (כולל מגבלת הגודל וסריקת מפתחות API)
 npm run check          # lint + test — רץ גם ב-CI לפני כל פריסה
 npm run build          # vite build → dist/
 ```
 
 **פריסה:** push ל-`main` → GitHub Actions (`deploy-pages.yml`) מריץ `npm run check` (נכשל = אין פריסה) ואז מפרסם ל-gh-pages. בדיקת סטטוס:
 `gh api "repos/gpzboy-creator/magnet-attack/actions/runs?per_page=1&branch=main" --jq '.workflow_runs[0] | .status+" "+.conclusion'`
+
+**איזו גרסה על המסך:** בפינה השמאלית התחתונה של מסך הפתיחה — `v <commit> · <תאריך>`. אם זה לא ה-commit האחרון, זה קאש: Ctrl+Shift+R.
 
 **פרמטרי דיבאג** (בכתובת): `?spawn=parking|dj|x,y` (מיקום התחלה; גם חושף `window.__player`), `?phase=dancing` (דילוג לריקודים), `?djthrow=1` (זריקת מפיות אחרי 4 שניות).
 
@@ -73,7 +76,8 @@ npm run build          # vite build → dist/
 ## נכסים גרפיים — PixelLab (הסטנדרט: הצלם הראשי)
 
 הסגנון: **hi-bit פיקסל-ארט כמו הצלם** — 8 כיוונים, רקע שקוף אמיתי, מבוגר ~166px בקנבס 168.
-- **מפתח API:** רק ב-`~/.secrets/pixellab_key`. **אסור** בקוד, בקומיט או בקבצים בריפו.
+- **מפתח API:** רק ב-`~/.secrets/pixellab_key`. **אסור** בקוד, בקומיט או בקבצים בריפו — `src/game/secrets.test.ts` סורק את הריפו ועוצר את הפריסה אם נמצא מפתח.
+- **כל נכס חדש נרשם ב-`docs/ASSETS.md`** (מקור, פרומפט, seed, עלות, סקריפט, מיקום).
 - **דמות:** `POST /v2/create-character-pro`, `method: create_with_style`, `reference_image` = פריים S של הצלם מוקטן ל-168 (≈25 יצירות). דמויות שמורות בחשבון.
 - **אנימציה לדמות:** `POST /v2/characters/animations`, `mode: v3`, כיוון `south` (≈7 יצירות לכיוון). הערה: "אוזנייה בין כתף לאוזן" לא מצליח מטקסט.
 - **חפץ/אביזר:** `POST /v2/generate-with-style-v2`, רפרנס = `car-closed.png` (זווית איזומטרית), `no_background: true` (≈15 יצירות; קנבס 448 ≈25). מראה אופקית כשהציר הארוך הפוך.
