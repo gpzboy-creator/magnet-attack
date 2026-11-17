@@ -21,6 +21,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install --legacy-peer-deps
+      # type check + all tests (incl. the code-size ratchet) — a failure stops the deploy
+      - run: npm run check
       - run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/

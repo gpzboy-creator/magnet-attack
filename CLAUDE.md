@@ -38,11 +38,12 @@ React + TypeScript + Vite, ציור ישיר על **Canvas2D** — אין מנו
 npm install
 npm run dev            # http://localhost:3000
 npm run lint           # tsc --noEmit
-node --experimental-strip-types --test src/game/*.test.ts   # כל הבדיקות
+npm test               # כל הבדיקות (כולל מגבלת הגודל)
+npm run check          # lint + test — רץ גם ב-CI לפני כל פריסה
 npm run build          # vite build → dist/
 ```
 
-**פריסה:** push ל-`main` → GitHub Actions (`deploy-pages.yml`) מפרסם ל-gh-pages. בדיקת סטטוס:
+**פריסה:** push ל-`main` → GitHub Actions (`deploy-pages.yml`) מריץ `npm run check` (נכשל = אין פריסה) ואז מפרסם ל-gh-pages. בדיקת סטטוס:
 `gh api "repos/gpzboy-creator/magnet-attack/actions/runs?per_page=1&branch=main" --jq '.workflow_runs[0] | .status+" "+.conclusion'`
 
 **פרמטרי דיבאג** (בכתובת): `?spawn=parking|dj|x,y` (מיקום התחלה; גם חושף `window.__player`), `?phase=dancing` (דילוג לריקודים), `?djthrow=1` (זריקת מפיות אחרי 4 שניות).
@@ -51,11 +52,23 @@ npm run build          # vite build → dist/
 
 1. **התחלה:** קוראים את "איפה עצרנו" ביומן ובוחרים משימה אחת ממפת הדרכים. מגדירים "מה זה גמור".
 2. **הערכת עלות לפני שמתחילים:** כמה מכסת Claude (קטן/בינוני/גדול) וכמה יצירות PixelLab. **יצירות PixelLab — רק אחרי אישור של שחר.**
-3. **אם המשימה נוגעת באזור בקובץ הראשי — קודם מפרקים אותו** (העבר, אל תשנה → בדיקה → commit), ורק אחר כך משנים. ראו `docs/REFACTOR_MAP.md`.
+3. **חובה: אם המשימה נוגעת באזור בקובץ הראשי — קודם מפרקים את האזור** (העבר, אל תשנה → בדיקה → commit), ורק אחר כך משנים. ראו `docs/REFACTOR_MAP.md`. גם קוד חדש לא נכנס לקובץ הראשי — הוא נכתב במודול משלו.
 4. **ביצוע.** שינויים קטנים וממוקדים.
 5. **בדיקה:** `lint` + בדיקות + `build` + צילום מסך באזור הרלוונטי (Playwright מול `vite preview`, עם `?spawn=`).
 6. **commit + push** עם הודעה שמסבירה *למה*, ובדיקת פריסה.
 7. **סיום:** מעדכנים את היומן (מה בוצע + הצעד הבא), את `docs/REFACTOR_MAP.md` אם פורק משהו, ואת מפת הדרכים אם השתנה סדר.
+
+### מתי משימה "גמורה" (Definition of Done)
+
+- [ ] `npm run check` עובר (טייפ-צ'ק + כל הבדיקות).
+- [ ] אם נגענו באזור בקובץ הראשי — האזור פורק למודול משלו, הסטטוס שלו ב-`docs/REFACTOR_MAP.md` עודכן ל-✅.
+- [ ] **מגבלת הגודל הורדה:** ב-`docs/size-budget.json` מעדכנים את מספר השורות של הקובץ הראשי למספר החדש (רק כלפי מטה). אם הקובץ גדל — הבדיקה `codeHealth.test.ts` נכשלת והפריסה נעצרת.
+- [ ] צילום מסך באזור שהשתנה.
+- [ ] commit + push, פריסה הצליחה, היומן עודכן.
+
+### מגבלת הגודל ("ראצ'ט")
+
+`docs/size-budget.json` + `src/game/codeHealth.test.ts`: הקובץ הראשי לא יכול לגדול אף פעם, ואף קובץ אחר לא עובר 1,600 שורות. כל פירוק מוריד את המספר — כך הקובץ הראשי רק קטן עם הזמן, אוטומטית, בלי לסמוך על זיכרון. היעד: ~1,500 שורות.
 
 ## נכסים גרפיים — PixelLab (הסטנדרט: הצלם הראשי)
 
