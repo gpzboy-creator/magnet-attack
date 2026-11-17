@@ -24,6 +24,25 @@ import { TitleAndModals } from './components/TitleAndModals';
 import { MagnetBoardModal } from './components/MagnetBoardModal';
 import { MagnetWorkstationModal } from './components/MagnetWorkstationModal';
 
+/** The old procedurally drawn photographer — only used if the PixelLab sheet cannot be loaded. */
+function buildProceduralPhotographerSheet(): { atlas: SpriteAtlasSchema; canvas: HTMLCanvasElement | null } {
+  const width = 512;
+  const height = 1024;
+  const rawRgba = generateDefaultIsoSpriteSheetRGBA(width, height, {
+    style: DEFAULT_CHARACTER_AND_SIZE_CONFIG.photographerStyle,
+  });
+  const rgba = keyOutChromaGreenRGBA(rawRgba);
+  const atlas = extractSpriteSheetAtlas(rgba, width, height, 4, 8);
+  let canvas: HTMLCanvasElement | null = null;
+  if (typeof document !== 'undefined') {
+    canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d')?.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
+  }
+  return { atlas, canvas };
+}
+
 export default function App() {
   // Support ?autostart=1 to boot directly into 'playing'
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -39,31 +58,15 @@ export default function App() {
   const [characterConfig, setCharacterConfig] =
     useState<CharacterAndSizeConfig>(DEFAULT_CHARACTER_AND_SIZE_CONFIG);
 
-  // Initialize sprite sheet RGBA buffer, HTMLCanvasElement, and pixel-by-pixel extracted atlas
+  // The photographer's sprite sheet. Starts EMPTY (the photographer is not drawn) until the PixelLab
+  // sheet has loaded — never show the old procedural character in the meantime.
   const [sheetState, setSheetState] = useState<{
     atlas: SpriteAtlasSchema;
     canvas: HTMLCanvasElement | null;
-  }>(() => {
-    const width = 512;
-    const height = 1024;
-    const rawRgba = generateDefaultIsoSpriteSheetRGBA(width, height, {
-      style: DEFAULT_CHARACTER_AND_SIZE_CONFIG.photographerStyle,
-    });
-    const rgba = keyOutChromaGreenRGBA(rawRgba);
-    const atlas = extractSpriteSheetAtlas(rgba, width, height, 4, 8);
-    let canvas: HTMLCanvasElement | null = null;
-    if (typeof document !== 'undefined') {
-      canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const imgData = new ImageData(new Uint8ClampedArray(rgba), width, height);
-        ctx.putImageData(imgData, 0, 0);
-      }
-    }
-    return { atlas, canvas };
-  });
+  }>(() => ({
+    atlas: { spriteSheet: { width: 0, height: 0, columns: 0, rows: 0, cellWidth: 0, cellHeight: 0 }, frames: [] },
+    canvas: null,
+  }));
 
   // Automatically load the attached pixel-art photographer sprite sheet on startup
   useEffect(() => {
@@ -72,10 +75,10 @@ export default function App() {
     loadPhotographerSheetPng()
       .then((loaded) => (loaded && loaded.atlas.frames.length > 0 ? loaded : loadUploadedPhotographerSpriteSheet()))
       .then((loaded) => {
-      if (active && loaded && loaded.atlas.frames.length > 0) {
-        setSheetState(loaded);
-      }
-    });
+        if (!active) return;
+        if (loaded && loaded.atlas.frames.length > 0) setSheetState(loaded);
+        else setSheetState(buildProceduralPhotographerSheet()); // last resort: both PNGs failed
+      });
     return () => {
       active = false;
     };
