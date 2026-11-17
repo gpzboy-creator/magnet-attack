@@ -4,7 +4,6 @@ import {
   FlashEngine,
   flashIntensity,
   getAffectedTargets,
-  getConePolygon,
   isTargetInCone,
   parseFlashColor,
   wrapAngle,
@@ -38,13 +37,6 @@ test('getAffectedTargets reuses the output array', () => {
   const hits = getAffectedTargets(cone, targets, out);
   assert.equal(hits, out);
   assert.deepEqual(hits, [targets[0], targets[2]]);
-});
-
-test('cone polygon has apex + arc points at range', () => {
-  const poly = getConePolygon(cone, 4);
-  assert.equal(poly.length, 6);
-  assert.deepEqual(poly[0], { x: 0, y: 0 });
-  for (const p of poly.slice(1)) assert.ok(Math.abs(Math.hypot(p.x, p.y) - 100) < 1e-9);
 });
 
 test('intensity envelope: peak, ease-out decay, zero after duration', () => {

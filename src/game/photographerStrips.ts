@@ -21,15 +21,6 @@ export const SEATED_FRAME = {
   lookAtParty: 3,
 } as const;
 
-export const CUTTING_FRAME = {
-  placeSheet: 0,
-  reachUp: 1,
-  pullDown: 2,
-  fullCut: 3,
-  leverUp: 4,
-  collect: 5,
-} as const;
-
 export interface StripFrame {
   x: number;
   y: number;
@@ -46,9 +37,6 @@ export interface SpriteStrip {
   frames: StripFrame[];
 }
 
-/** Kept for compatibility with earlier code. */
-export type SeatedSpriteFrame = StripFrame;
-export type SeatedSpriteSheet = SpriteStrip;
 
 /** True for chroma-key green pixels (tolerant of JPEG noise). */
 export function isChromaGreen(r: number, g: number, b: number): boolean {

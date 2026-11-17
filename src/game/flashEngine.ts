@@ -218,24 +218,6 @@ export function getAffectedTargets<T extends FlashTarget>(
   return out;
 }
 
-/**
- * World-space polygon of the cone (apex + arc points), e.g. for debug drawing or
- * custom intersection tests. Writes into `out` when provided.
- */
-export function getConePolygon(
-  cone: ConeGeometry,
-  segments = ARC_SEGMENTS,
-  out: FlashVec2[] = []
-): FlashVec2[] {
-  out.length = 0;
-  out.push({ x: cone.originX, y: cone.originY });
-  for (let i = 0; i <= segments; i++) {
-    const a = cone.angle - cone.halfFov + (2 * cone.halfFov * i) / segments;
-    out.push({ x: cone.originX + Math.cos(a) * cone.range, y: cone.originY + Math.sin(a) * cone.range });
-  }
-  return out;
-}
-
 // ----------------------------------------------------------------------------
 // Engine
 // ----------------------------------------------------------------------------

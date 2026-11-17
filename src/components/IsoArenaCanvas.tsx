@@ -34,7 +34,6 @@ import {
   evaluateGuestJoyFromShot,
   getActiveWorkflowObjective,
   getMaxCameraCapacity,
-  getPreferredFrameForGuest,
   getUpgradeCost,
   getWaveConfig,
   getWorkstationSheetProgress,
@@ -74,15 +73,11 @@ import {
   drawPixelThermalPrinter,
 } from '../game/workstationPixelArt';
 import {
-  drawPixelDjStageAndLedWall,
   drawDjLedWall,
 } from '../game/venuePixelArt';
 import {
-  BARTENDER_STATIONS,
   BAR_GUEST_SPOTS,
   BAR_PICKUP_SPOTS,
-  BartenderAction,
-  BartenderLook,
   DECOR_TABLES,
   ISLAND_BAR,
   LONG_TABLE,
@@ -4584,10 +4579,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         draw: () => {
           const st = propImgs.get('djStage');
           const cn = propImgs.get('djConsole');
-          if (!st || !cn) {
-            drawPixelDjStageAndLedWall(ctx, originX, originY, discoBeatPhase, drawIsoBox, drawDjFigure);
-            return;
-          }
+          if (!st || !cn) return; // sprites still loading
           drawPropSprite(ctx, st, PROP_SPRITES.djStage, originX, originY, DJ_SET.stage.minX, DJ_SET.stage.maxY);
           const w = DJ_SET.ledWall;
           drawDjLedWall(ctx, originX, originY, discoBeatPhase, w.x0, w.x1, w.y, w.z0, w.height);

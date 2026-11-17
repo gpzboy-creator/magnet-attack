@@ -54,13 +54,8 @@ export function worldToIso(worldX: number, worldY: number, zLift = 0): Vec2 {
   };
 }
 
-/**
- * The chuppah stands in the courtyard (the ceremony happens outside). Its art was laid out around
- * CHUPPAH_ART_ANCHOR in the hall; everything is drawn/placed shifted by CHUPPAH_SHIFT.
- */
-export const CHUPPAH_ART_ANCHOR = { x: 115, y: -185 };
+/** The chuppah stands in the courtyard (the ceremony happens outside): centre of its pool. */
 export const CHUPPAH_POS = { x: 1380, y: -200 };
-export const CHUPPAH_SHIFT = { x: CHUPPAH_POS.x - CHUPPAH_ART_ANCHOR.x, y: CHUPPAH_POS.y - CHUPPAH_ART_ANCHOR.y };
 
 export type FloorObstacle =
   | { kind: 'circle'; x: number; y: number; r: number }
@@ -197,22 +192,6 @@ export function computeCombinedMovementVector(
     screenAngle,
     isMoving: true,
   };
-}
-
-/**
- * Calculates joy/magnet points awarded for photographing a wedding guest archetype with combo multiplier.
- */
-export function calculateKillScore(
-  archetype: EnemyArchetype,
-  comboCount: number
-): number {
-  const basePoints: Record<EnemyArchetype, number> = {
-    swarmer: 100, // Dancing Guest (רקדן נלהב ברחבה)
-    kiter: 175,   // VIP Prop Guest (חובב אביזרים וסלפי)
-    charger: 250, // Bride & Groom / Party Lead (חתן כלה / מוביל הרחבה)
-  };
-  const multiplier = Math.min(4, 1 + Math.floor(Math.max(0, comboCount) / 3) * 0.5);
-  return Math.round(basePoints[archetype] * multiplier);
 }
 
 /**

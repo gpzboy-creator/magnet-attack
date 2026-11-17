@@ -186,7 +186,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [upgradesOpen, setUpgradesOpen] = useState(false);
-  const [revealKeyHeld, setRevealKeyHeld] = useRevealKey();
+  const [revealKeyHeld] = useRevealKey();
   const [tapRevealUntil, setTapRevealUntil] = useState(0);
   const { scale, layout } = useHudViewport();
 

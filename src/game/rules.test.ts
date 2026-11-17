@@ -26,7 +26,6 @@ import {
   worldToIso,
   isoToWorld,
   angleToIsoDirection,
-  calculateKillScore,
   getWaveConfig,
   computeCombinedMovementVector,
   getActiveWorkflowObjective,
@@ -136,10 +135,7 @@ test('clamped dt and hitstop freeze simulation physics cleanly', () => {
   assert.equal(active.nextHitstop, 0);
 });
 
-test('scoring and multi-knob wave scaling progress deterministically with wedding magnet targets', () => {
-  assert.equal(calculateKillScore('swarmer', 0), 100);
-  assert.equal(calculateKillScore('charger', 6), 500);
-
+test('multi-knob wave scaling progresses deterministically with wedding magnet targets', () => {
   const w1 = getWaveConfig(1);
   const w4 = getWaveConfig(4);
   assert.ok(w4.spawnBudget > w1.spawnBudget);

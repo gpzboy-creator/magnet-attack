@@ -45,8 +45,6 @@ export function computeFadeOpacity(params: {
 export const HUD_REFERENCE = { width: 1280, height: 800 } as const;
 export const HUD_SCALE_MIN = 0.82;
 export const HUD_SCALE_MAX = 1.3;
-/** Base font size (px) at scale 1 — every HUD dimension is expressed in em of this. */
-export const HUD_BASE_FONT_PX = 11;
 
 /**
  * HUD scale for a viewport: follows the limiting dimension relative to the reference

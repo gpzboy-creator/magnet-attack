@@ -475,7 +475,7 @@ function applyStrictCellOutlineAndFloorAnchor(
   cellX: number,
   cellY: number,
   cellW: number,
-  cellH: number,
+  _cellH: number,
   groundBottomY: number
 ) {
   const copy = new Uint8ClampedArray(rgba);
