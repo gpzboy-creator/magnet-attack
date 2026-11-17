@@ -12,7 +12,6 @@ interface TitleAndModalsProps {
   onStartGame: () => void;
   onResumeGame: () => void;
   onReturnTitle: () => void;
-  onOpenAtlas: () => void;
   onDownloadSprite: () => void;
 }
 
@@ -26,7 +25,6 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
   onStartGame,
   onResumeGame,
   onReturnTitle,
-  onOpenAtlas,
   onDownloadSprite,
 }) => {
   if (gameState === 'playing') return null;
@@ -145,25 +143,6 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
                 <span>הורד ספרייט PNG</span>
               </button>
 
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onOpenAtlas();
-                }}
-                className="px-4 py-2.5 rounded-lg bg-stone-950/90 hover:bg-stone-900 border-2 border-amber-400/80 text-amber-300 font-bold text-xs sm:text-sm transition-colors shadow-xl whitespace-nowrap shrink-0 cursor-pointer flex items-center gap-1.5"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="w-4 h-4 shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-                <span>עריכת דמויות וגודל [I]</span>
-              </button>
             </div>
           </div>
 
@@ -254,13 +233,6 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
             </button>
             <button
               type="button"
-              onClick={onOpenAtlas}
-              className="w-full py-2.5 px-4 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-200 font-bold text-sm transition-colors"
-            >
-              עריכת דמויות ואטלס ספרייטים [I]
-            </button>
-            <button
-              type="button"
               onClick={onStartGame}
               className="w-full py-2.5 px-4 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-sm transition-colors"
             >
@@ -331,13 +303,6 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
             className="w-full py-3 px-4 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 font-black text-sm transition-colors cursor-pointer"
           >
             {victory ? 'צלם חתונה נוספת [Enter]' : 'הדרן - נגן שוב [Enter]'}
-          </button>
-          <button
-            type="button"
-            onClick={onOpenAtlas}
-            className="w-full py-2.5 px-4 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-200 font-bold text-sm transition-colors cursor-pointer"
-          >
-            עריכת דמויות וגודל [I]
           </button>
           <button
             type="button"

@@ -82,7 +82,6 @@ interface GameHudProps {
   onToggleMute: () => void;
   onPause: () => void;
   onRestart: () => void;
-  onOpenAtlas: () => void;
   onDownloadSprite: () => void;
   onSelectWeapon: (mode: 'pulse' | 'scatter') => void;
   onSelectFrame?: (frame: MagnetFrameId) => void;
@@ -174,7 +173,6 @@ export const GameHud: React.FC<GameHudProps> = ({
   onToggleMute,
   onPause,
   onRestart,
-  onOpenAtlas,
   onDownloadSprite,
   onSelectWeapon,
   onSelectFrame,
@@ -613,10 +611,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
           {settingsOpen && (
             <div dir="rtl" className="mhud-pop" style={{ top: '2.4em', right: 0 }}>
-              <button type="button" onClick={() => { setSettingsOpen(false); onOpenAtlas(); }}>
-                <span>✏️ עריכת דמויות</span>
-                <span className="mhud-key">I</span>
-              </button>
               <button type="button" onClick={() => { setSettingsOpen(false); onDownloadSprite(); }}>
                 <span>⬇️ הורד ספרייטים</span>
                 <span className="num">PNG</span>

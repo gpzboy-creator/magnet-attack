@@ -1411,57 +1411,6 @@ export function downloadSpriteSheetPNG(
   document.body.removeChild(link);
 }
 
-/**
- * Triggers a browser download of a single extracted sprite frame as a crisp scaled PNG.
- */
-export function downloadSingleFramePNG(
-  sheetCanvas: HTMLCanvasElement | null,
-  frame: ExtractedSpriteFrame,
-  chromaGreen = true,
-  scale = 4,
-  widthRatio = 1,
-  heightRatio = 1
-): void {
-  if (!sheetCanvas || !frame || typeof document === 'undefined') return;
-  const pad = 4;
-  const scaledW = Math.max(8, Math.round(frame.width * scale * widthRatio));
-  const scaledH = Math.max(8, Math.round(frame.height * scale * heightRatio));
-  const exportCanvas = document.createElement('canvas');
-  exportCanvas.width = scaledW + pad * 2 * scale;
-  exportCanvas.height = scaledH + pad * 2 * scale;
-  const ctx = exportCanvas.getContext('2d');
-  if (!ctx) return;
-
-  ctx.imageSmoothingEnabled = false;
-  if (chromaGreen) {
-    ctx.fillStyle = '#00FF00';
-    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-  } else {
-    ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
-  }
-
-  ctx.drawImage(
-    sheetCanvas,
-    frame.x,
-    frame.y,
-    frame.width,
-    frame.height,
-    pad * scale,
-    pad * scale,
-    scaledW,
-    scaledH
-  );
-
-  const link = document.createElement('a');
-  link.download = `wedding_photographer_${frame.id}_${scaledW}x${scaledH}${
-    chromaGreen ? '_chroma' : '_transparent'
-  }.png`;
-  link.href = exportCanvas.toDataURL('image/png');
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
 /** Current main character: 8-direction PixelLab photographer (transparent PNG, 4x8 cells of 352px). */
 export const PHOTOGRAPHER_V2_SHEET_URL = `${import.meta.env?.BASE_URL ?? '/'}assets/aistudio/photographer-walk4.png`;
 

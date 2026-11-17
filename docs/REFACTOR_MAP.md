@@ -70,7 +70,9 @@
 | 8 | אפקטים | 700–1010, 4373–4447, 6164–6430 | `src/render/effects.ts` | כשנוגעים באפקטים | ⬜ |
 | 9 | טיפוסים וקבועים | 214–460 | `src/game/actors.ts`, `src/game/hallLayout.ts` | עם הפירוק הראשון שצריך אותם | ⬜ |
 
-**קבצים גדולים נוספים** (לא דחוף): `SpriteAtlasModal.tsx` 1,655 · `spriteExtractor.ts` 1,621 · `rules.ts` 1,402 · `hallPixelArt.ts` 1,256 · `venueOutside.ts` 1,169.
+**קבצים גדולים נוספים** (לא דחוף): `spriteExtractor.ts` 1,570 · `rules.ts` ~1,390 · `hallPixelArt.ts` 1,256 · `venueOutside.ts` 1,169.
+
+**ניקוי קוד מת (17.11):** נמחקו כלי ה-Sprite Atlas (1,655 שורות), החופה/מסלול/במת הדיג'יי הפרוצדורליים הישנים (`venuePixelArt.ts` 458→52), פונקציות שרק בדיקות השתמשו בהן, ו-8 חבילות npm. בדיקה חוזרת: `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` צריך להיות נקי.
 
 ## כללי פירוק
 

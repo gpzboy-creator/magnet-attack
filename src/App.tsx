@@ -20,7 +20,6 @@ import { sound } from './game/sound';
 import { GameHud, HudSnapshot } from './components/GameHud';
 import { IsoArenaCanvas } from './components/IsoArenaCanvas';
 import { MobileControls, VirtualInputState } from './components/MobileControls';
-import { SpriteAtlasModal } from './components/SpriteAtlasModal';
 import { TitleAndModals } from './components/TitleAndModals';
 import { MagnetBoardModal } from './components/MagnetBoardModal';
 import { MagnetWorkstationModal } from './components/MagnetWorkstationModal';
@@ -82,7 +81,6 @@ export default function App() {
     };
   }, []);
 
-  const [isAtlasOpen, setIsAtlasOpen] = useState(false);
   const [muted, setMuted] = useState(false);
   const [weaponMode, setWeaponMode] = useState<'pulse' | 'scatter'>('pulse');
   const [selectedFrame, setSelectedFrame] = useState<MagnetFrameId>('gold');
@@ -124,20 +122,17 @@ export default function App() {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-    setIsAtlasOpen(false);
     setRunId((id) => id + 1);
     setGameState('playing');
   }, []);
 
   const handleResumeGame = useCallback(() => {
     document.body.dataset.state = 'playing';
-    setIsAtlasOpen(false);
     setGameState('playing');
   }, []);
 
   const handleReturnTitle = useCallback(() => {
     document.body.dataset.state = 'title';
-    setIsAtlasOpen(false);
     setGameState('title');
   }, []);
 
@@ -267,13 +262,6 @@ export default function App() {
   // Global keyboard shortcuts for Title Start, Pause, Restart, Weapon Switch, Magnet Frame, Magnet Board, Workstation, and Character/Sprite Editor
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isAtlasOpen) {
-        if (e.code === 'Escape') {
-          setIsAtlasOpen(false);
-        }
-        return;
-      }
-
       if (isBoardModalOpen) {
         if (e.code === 'Escape') {
           setIsBoardModalOpen(false);
@@ -295,9 +283,6 @@ export default function App() {
         if (e.code === 'Enter' || e.code === 'Space') {
           e.preventDefault();
           handleStartGame();
-        } else if (e.code === 'KeyI' || e.code === 'KeyE') {
-          e.preventDefault();
-          setIsAtlasOpen(true);
         }
         return;
       }
@@ -306,9 +291,6 @@ export default function App() {
         if (e.code === 'Enter' || e.code === 'Space') {
           e.preventDefault();
           handleStartGame();
-        } else if (e.code === 'KeyI') {
-          e.preventDefault();
-          setIsAtlasOpen(true);
         }
         return;
       }
@@ -331,9 +313,6 @@ export default function App() {
       } else if (e.code === 'KeyV') {
         e.preventDefault();
         setIsWorkstationModalOpen((v) => !v);
-      } else if (e.code === 'KeyI') {
-        e.preventDefault();
-        setIsAtlasOpen((v) => !v);
       } else if (e.code === 'KeyM') {
         handleToggleMute();
       } else if (e.code === 'KeyR') {
@@ -353,7 +332,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [
     gameState,
-    isAtlasOpen,
     isBoardModalOpen,
     isWorkstationModalOpen,
     handleStartGame,
@@ -368,7 +346,7 @@ export default function App() {
     <main className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none">
       {/* Isolated 60fps Isometric Canvas */}
       <IsoArenaCanvas
-        gameState={isAtlasOpen || isBoardModalOpen || isWorkstationModalOpen ? 'paused' : gameState}
+        gameState={isBoardModalOpen || isWorkstationModalOpen ? 'paused' : gameState}
         atlas={sheetState.atlas}
         sheetCanvas={sheetState.canvas}
         characterConfig={characterConfig}
@@ -404,7 +382,6 @@ export default function App() {
           onToggleMute={handleToggleMute}
           onPause={() => setGameState('paused')}
           onRestart={handleStartGame}
-          onOpenAtlas={() => setIsAtlasOpen(true)}
           onDownloadSprite={handleDownloadSprite}
           onSelectWeapon={setWeaponMode}
           onSelectFrame={setSelectedFrame}
@@ -488,23 +465,9 @@ export default function App() {
         onStartGame={handleStartGame}
         onResumeGame={handleResumeGame}
         onReturnTitle={handleReturnTitle}
-        onOpenAtlas={() => setIsAtlasOpen(true)}
         onDownloadSprite={handleDownloadSprite}
       />
 
-      {/* Interactive Character Editor, Sprite Size Studio & Foot Anchor JSON Extractor */}
-      <SpriteAtlasModal
-        isOpen={isAtlasOpen}
-        initialTab="editor"
-        onClose={() => setIsAtlasOpen(false)}
-        atlas={sheetState.atlas}
-        sheetCanvas={sheetState.canvas}
-        characterConfig={characterConfig}
-        onUpdateCharacterConfig={setCharacterConfig}
-        onUpdateAtlas={(newAtlas, newCanvas) =>
-          setSheetState({ atlas: newAtlas, canvas: newCanvas })
-        }
-      />
     </main>
   );
 }
