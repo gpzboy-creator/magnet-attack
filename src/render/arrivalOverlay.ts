@@ -79,6 +79,7 @@ export function drawPhaseOverlay(
   ctx.restore();
 }
 
-export function receptionLabelHe(stats: ArrivalStats, onTheWay: number): string {
-  return `🚪 קבלת פנים · צולמו ${stats.photographed}/${stats.total} · ✨ זהב ${stats.gold} · 😕 פוספסו ${stats.missed} · עוד ${onTheWay} בדרך`;
+export function receptionLabelHe(stats: ArrivalStats, coming: number, inYard: number): string {
+  const ignored = stats.ignored > 0 ? ` · 😒 ${stats.ignored}` : '';
+  return `🚪 קבלת פנים · צולמו ${stats.photographed}/${stats.total} · ✨ זהב ${stats.gold} · 😕 פוספסו ${stats.missed}${ignored} · עוד ${coming} בדרך · 🌳 ${inYard} בחצר`;
 }

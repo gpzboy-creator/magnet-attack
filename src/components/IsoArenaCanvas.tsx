@@ -7,7 +7,6 @@ import {
   GameState,
   MAGNET_FRAMES,
   MAX_UPGRADE_LEVEL,
-  MagnetDeliveryTrackerState,
   MagnetFrameId,
   PHOTOS_PER_SHEET,
   PhotographerUpgradeLevels,
@@ -23,7 +22,6 @@ import {
   clampDt,
   computeCombinedMovementVector,
   computeSimDt,
-  createInitialMagnetDeliveryTracker,
   createVipEvent,
   doesShotCountForVipEvent,
   evaluateDancefloorCrowdState,
@@ -52,7 +50,6 @@ import {
   pickNextSocialDanceSpot,
   resolveFloorObstacles,
   stepCrowdJoy,
-  stepMagnetDeliveryTracker,
   updateWorkstationChairState,
   worldToIso,
   CHUPPAH_POS,
@@ -274,7 +271,7 @@ export interface WeddingGuestActor {
   castLook?: CastLookId;
   /** Arrival phase: walking in from the courtyard, posing at the photo wall, going to the seat. */
   arrival?: {
-    state: 'waiting' | 'walking_in' | 'posing' | 'leaving';
+    state: 'waiting' | 'walking_in' | 'posing' | 'mingling' | 'leaving';
     delay: number;
     order: number;
     poseT: number;
@@ -1097,9 +1094,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player,
       takeHallGuests: () => { const hall = guests; guests = []; return hall; },
       seatGuest: (g) => { guests.push(g); },
-      onMissed: (g) => {
+      onMissed: (g, where) => {
         mood.onArrivalMissed(moodBook, g.id);
-        addFrameLabel('−❤', g.x, g.y, '#f87171', '😕 פספסת תמונה בכניסה');
+        addFrameLabel('−❤', g.x, g.y, '#f87171', where === 'yard' ? '😒 ביקשו תמונה ולא צילמת' : '😕 פספסת תמונה בכניסה');
       },
       onAllSeated: () => startDancingPhase(),
     });
@@ -1129,7 +1126,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let vipEvent: VipEventState | null = null;
     let vipEventSeq = 0;
     let nextVipCooldown = 2.5;
-    let magnetDeliveryTracker: MagnetDeliveryTrackerState = createInitialMagnetDeliveryTracker();
     let upgradeLevels: PhotographerUpgradeLevels = {
       turbo_station: 0,
       pro_sdcard: 0,
@@ -1462,16 +1458,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.stationFeedbackText = mood.deliveryFeedbackHe(batch, tips, kinds);
       player.stationFeedbackTimer = 3.5;
 
-      // Reset delivery SLA timer for the next batch if all items are delivered
-      const remainingPending = player.photosInCamera + player.transferBatch + player.photosOnComputer + player.uncutSheetsAtStation + player.cutMagnetsInHand;
-      magnetDeliveryTracker =
-        remainingPending > 0
-          ? {
-              ...createInitialMagnetDeliveryTracker(),
-              pendingCount: remainingPending,
-            }
-          : createInitialMagnetDeliveryTracker();
-
       spawnParticles(TRIPOD_BOARD_POS.x, TRIPOD_BOARD_POS.y, 38, frameCfg.borderColor, 170, 55);
     };
 
@@ -1618,7 +1604,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // Spawn first VIP Moment right away so the hall feels alive!
       vipEvent = createVipEvent(vipEventSeq++);
       nextVipCooldown = 5.0;
-      magnetDeliveryTracker = createInitialMagnetDeliveryTracker();
 
       // Three waiters in black shirts + aprons, running drinks from the island bar to the guests
       waiters = [0, 1, 2].map((i) => {
@@ -3037,16 +3022,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
-          // Update Magnet Delivery SLA Timer ("הוצאת מגנט בזמן")
-          const pendingMagnetsInPipeline =
-            player.photosInCamera + player.transferBatch + player.photosOnComputer + player.uncutSheetsAtStation + player.cutMagnetsInHand;
-          const deliveryStep = stepMagnetDeliveryTracker(
-            magnetDeliveryTracker,
-            pendingMagnetsInPipeline,
-            simDt
-          );
-          magnetDeliveryTracker = deliveryStep.nextState;
-
+          // Each guest's magnet deadline (the old global delivery timer is gone): guestMood.ts
           for (const id of mood.tickMood(moodBook, gameClock)) {
             const g = guests.find((o) => o.id === id);
             if (!g) continue;
@@ -6209,7 +6185,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       // EVENT PHASE: title card when a phase starts + live arrival progress (screen space, arrivalOverlay.ts)
       if (stateRef.current === 'playing') {
-        drawPhaseOverlay(ctx, viewW, viewH, eventPhase, phaseIntroTimer, eventPhase === 'arrival' ? receptionLabelHe(arrival.stats, arrival.guests.length) : null);
+        drawPhaseOverlay(ctx, viewW, viewH, eventPhase, phaseIntroTimer, eventPhase === 'arrival' ? receptionLabelHe(arrival.stats, arrival.comingCount, arrival.yardCount) : null);
       }
 
       // Update HUD at regular cadence
@@ -6271,7 +6247,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           selectedFrame: selectedFrameRef.current,
           upgradeLevels: { ...upgradeLevels },
           crowdStats,
-          magnetDeliveryTracker: { ...magnetDeliveryTracker },
           weaponMode: weaponRef.current,
         });
       }

@@ -1,20 +1,94 @@
 /**
  * Arrival phase (reception) — moved out of IsoArenaCanvas.tsx (REFACTOR_MAP area 6).
- * Guests walk in from the courtyard, queue at the flower photo wall, pose, then walk through
- * the hall door to their seat. The canvas owns phase timers and drawing; this module owns
- * the arriving guests and the arrival stats.
+ * Guests walk in from the courtyard, queue at the flower photo wall and pose, then mingle in the
+ * reception garden (yardMingle.ts: sides, friend groups, buffet queues, asking the photographer).
+ * When everyone has posed and mingled a while, they walk through the hall door to their seat.
+ * The canvas owns phase timers and drawing; this module owns the arriving guests and the stats.
  */
 
 import type { WeddingGuestActor } from '../components/IsoArenaCanvas';
 import { angleToIsoDirection, moveTowardPoint, worldToIso } from './rules';
 import { ARRIVAL, arrivalSchedule } from './eventPhases';
-import { ARRIVAL_ENTRY, HALL_DOOR, PHOTO_SPOT } from './venueOutside';
+import {
+  ARRIVAL_ENTRY,
+  BENCHES,
+  COCKTAIL_TABLES,
+  COURTYARD,
+  COURTYARD_PATH,
+  FOOD_STATIONS,
+  FOUNTAIN_POS,
+  HALL_DOOR,
+  OUTSIDE_OBSTACLES,
+  PHOTO_SPOT,
+  RECEPTION_BAR,
+} from './venueOutside';
+import {
+  MINGLE,
+  assignSides,
+  formGroups,
+  memberSpot,
+  newAsk,
+  placeGroupSpots,
+  queueSlot,
+  randIn,
+  shortestQueue,
+  stepAsk,
+  type AskState,
+  type Hotspot,
+  type Point,
+  type Side,
+} from './yardMingle';
+
+/** Reception garden attractions (south of the path); the crowd gathers around them. */
+const barFront = { x: (RECEPTION_BAR.minX + RECEPTION_BAR.maxX) / 2, y: RECEPTION_BAR.maxY + 60 };
+const YARD_HOTSPOTS: Hotspot[] = [
+  { ...barFront, weight: 3 },
+  ...COCKTAIL_TABLES.map(([x, y]) => ({ x, y, weight: 2 })),
+  { x: FOUNTAIN_POS.x + 70, y: FOUNTAIN_POS.y - 40, weight: 1.5 },
+  ...BENCHES.map((b) => ({ x: (b.x0 + b.x1) / 2, y: b.y + 30, weight: 1 })),
+  { x: 1250, y: 460, weight: 1 },
+  { x: 1580, y: 450, weight: 1 },
+  { x: 1300, y: 760, weight: 1 },
+];
+const BUFFET_FRONTS: Point[] = FOOD_STATIONS.map((r) => ({ x: (r.minX + r.maxX) / 2, y: r.maxY + 14 }));
+
+/** Open garden ground: inside the courtyard, south of the path, clear of props and the photo wall. */
+function isYardFree(p: Point): boolean {
+  if (p.x < COURTYARD.minX + 30 || p.x > COURTYARD.maxX - 30) return false;
+  if (p.y < COURTYARD_PATH.maxY + 14 || p.y > COURTYARD.maxY - 30) return false;
+  if (Math.hypot(p.x - PHOTO_SPOT.x, p.y - PHOTO_SPOT.y) < 70) return false;
+  for (const o of OUTSIDE_OBSTACLES) {
+    if (o.kind === 'circle') {
+      if (Math.hypot(p.x - o.x, p.y - o.y) < o.r + 12) return false;
+    } else if (p.x > o.minX - 12 && p.x < o.maxX + 12 && p.y > o.minY - 12 && p.y < o.maxY + 12) {
+      return false;
+    }
+  }
+  return true;
+}
+
+type YardActivity = 'to_spot' | 'chatting' | 'to_buffet' | 'eating';
+
+interface YardState {
+  side: Side;
+  group: number;
+  spot: Point;
+  activity: YardActivity;
+  timer: number;
+  ask: AskState;
+  /** Index of the buffet queue this guest stands in. */
+  queue: number | null;
+  /** A yard photo of a guest missed at the wall was counted in the stats. */
+  counted: boolean;
+}
 
 export interface ArrivalStats {
   total: number;
   photographed: number;
   gold: number;
   missed: number;
+  /** Guests who asked for a photo in the yard and didn't get one. */
+  ignored: number;
 }
 
 export interface ArrivalHost {
@@ -24,8 +98,8 @@ export interface ArrivalHost {
   takeHallGuests(): WeddingGuestActor[];
   /** A guest reached their seat: put them back in the hall list. */
   seatGuest(g: WeddingGuestActor): void;
-  /** The pose ended without a photo. */
-  onMissed(g: WeddingGuestActor): void;
+  /** The pose ended without a photo ('wall'), or a guest in the yard asked and was ignored ('yard'). */
+  onMissed(g: WeddingGuestActor, where: 'wall' | 'yard'): void;
   /** Everyone is seated (or the phase ran too long): start the dancing. */
   onAllSeated(): void;
 }
@@ -33,6 +107,12 @@ export interface ArrivalHost {
 export interface ArrivalController {
   readonly guests: WeddingGuestActor[];
   readonly stats: ArrivalStats;
+  /** Groom's or bride's side (assigned at the start of the reception). */
+  sideOf(id: number): Side | null;
+  /** Still on the way in or at the photo wall. */
+  readonly comingCount: number;
+  /** Mingling in the garden. */
+  readonly yardCount: number;
   start(): void;
   /** Anyone still on the way just takes their seat. */
   finishAll(): void;
@@ -41,7 +121,13 @@ export interface ArrivalController {
 
 export function createArrival(host: ArrivalHost): ArrivalController {
   let arrivingGuests: WeddingGuestActor[] = [];
-  const stats: ArrivalStats = { total: 0, photographed: 0, gold: 0, missed: 0 };
+  const stats: ArrivalStats = { total: 0, photographed: 0, gold: 0, missed: 0, ignored: 0 };
+  const yard = new Map<number, YardState>();
+  let groupSpots: Point[] = [];
+  let groupMembers: number[][] = [];
+  let queues: number[][] = BUFFET_FRONTS.map(() => []);
+  let sinceAllPosed = 0;
+  let calledIn = false;
 
   function start() {
     const hall = host.takeHallGuests();
@@ -76,6 +162,134 @@ export function createArrival(host: ArrivalHost): ArrivalController {
     stats.photographed = 0;
     stats.gold = 0;
     stats.missed = 0;
+    stats.ignored = 0;
+
+    // Yard: sides, friend groups and where each group gathers
+    const sides = assignSides(arrivingGuests, Math.random);
+    groupMembers = formGroups(arrivingGuests, sides, Math.random);
+    groupSpots = placeGroupSpots(groupMembers.length, YARD_HOTSPOTS, isYardFree, Math.random);
+    yard.clear();
+    queues = BUFFET_FRONTS.map(() => []);
+    sinceAllPosed = 0;
+    calledIn = false;
+    groupMembers.forEach((members, gi) => {
+      members.forEach((id, idx) => {
+        yard.set(id, {
+          side: sides.get(id) ?? 'groom',
+          group: gi,
+          spot: memberSpot(groupSpots[gi], idx, members.length, Math.random, isYardFree),
+          activity: 'to_spot',
+          timer: 0,
+          ask: newAsk(),
+          queue: null,
+          counted: false,
+        });
+      });
+    });
+  }
+
+  const leaveQueue = (id: number, y: YardState) => {
+    if (y.queue == null) return;
+    queues[y.queue] = queues[y.queue].filter((q) => q !== id);
+    y.queue = null;
+  };
+
+  /** One guest mingling in the yard. */
+  function updateMingling(g: WeddingGuestActor, dt: number, walkTo: (tx: number, ty: number, speed: number) => boolean) {
+    const y = yard.get(g.id);
+    if (!y) return;
+    const player = host.player;
+    const dist = Math.hypot(player.x - g.x, player.y - g.y);
+
+    // A guest missed at the wall but photographed in the yard counts as photographed
+    if (!y.counted && g.photoCount > 0 && !g.arrival?.photographed) {
+      y.counted = true;
+      stats.photographed++;
+    }
+    // Asking the photographer (only guests nobody has photographed yet)
+    const step = stepAsk(y.ask, dist, dt, g.photoCount > 0);
+    if (step.event === 'started') {
+      g.speechBubbleText = ['📸 גם אותנו!', '📸 צלם אותנו!', '😁 תמונה?', '🥂 צלם!'][g.id % 4];
+      g.wantsPhotoTimer = MINGLE.askSec;
+    } else if (step.event === 'ignored') {
+      stats.ignored++;
+      g.speechBubbleText = '😒';
+      g.wantsPhotoTimer = 1.6;
+      host.onMissed(g, 'yard');
+    } else if (y.ask.phase === 'asking' && step.state.phase === 'done') {
+      g.speechBubbleText = '😁';
+      g.wantsPhotoTimer = 1.2;
+    }
+    y.ask = step.state;
+    if (y.ask.phase === 'asking') {
+      const isoG = worldToIso(g.x, g.y);
+      const isoP = worldToIso(player.x, player.y);
+      g.direction = angleToIsoDirection(Math.atan2(isoP.y - isoG.y, isoP.x - isoG.x));
+      return; // stands still, posing for the photographer
+    }
+
+    const speed = MINGLE.walkSpeed;
+    if (y.activity === 'to_spot') {
+      if (walkTo(y.spot.x, y.spot.y, speed)) {
+        y.activity = 'chatting';
+        y.timer = randIn(Math.random, MINGLE.chatSec);
+        const c = groupSpots[y.group];
+        const isoG = worldToIso(g.x, g.y);
+        const isoC = worldToIso(c.x, c.y);
+        if (Math.hypot(c.x - g.x, c.y - g.y) > 4) g.direction = angleToIsoDirection(Math.atan2(isoC.y - isoG.y, isoC.x - isoG.x));
+      }
+      return;
+    }
+    if (y.activity === 'chatting') {
+      g.strideDist += dt * 6; // small idle sway
+      y.timer -= dt;
+      if (y.timer > 0) return;
+      if (Math.random() < MINGLE.buffetChance && BUFFET_FRONTS.length > 0) {
+        y.queue = shortestQueue(queues);
+        queues[y.queue].push(g.id);
+        y.activity = 'to_buffet';
+      } else {
+        const members = groupMembers[y.group];
+        y.spot = memberSpot(groupSpots[y.group], members.indexOf(g.id), members.length, Math.random, isYardFree);
+        y.activity = 'to_spot';
+      }
+      return;
+    }
+    if (y.activity === 'to_buffet' && y.queue != null) {
+      const idx = queues[y.queue].indexOf(g.id);
+      const slot = queueSlot(BUFFET_FRONTS[y.queue], Math.max(0, idx));
+      const arrived = walkTo(slot.x, slot.y, speed);
+      if (arrived) g.direction = 'NW';
+      if (arrived && idx === 0) {
+        y.activity = 'eating';
+        y.timer = randIn(Math.random, MINGLE.serveSec);
+      }
+      return;
+    }
+    if (y.activity === 'eating') {
+      y.timer -= dt;
+      if (y.timer > 0) return;
+      leaveQueue(g.id, y);
+      g.speechBubbleText = ['🍢', '🍣', '🥗', '🍤'][g.id % 4];
+      g.wantsPhotoTimer = 1.4;
+      const members = groupMembers[y.group];
+      y.spot = memberSpot(groupSpots[y.group], members.indexOf(g.id), members.length, Math.random, isYardFree);
+      y.activity = 'to_spot';
+    }
+  }
+
+  /** The ceremony is called: everyone in the yard heads for the hall door. */
+  function callIn() {
+    calledIn = true;
+    for (const g of arrivingGuests) {
+      const a = g.arrival;
+      if (!a || a.state !== 'mingling') continue;
+      const y = yard.get(g.id);
+      if (y) leaveQueue(g.id, y);
+      a.state = 'leaving';
+      g.speechBubbleText = g.id % 3 === 0 ? '🔔 נכנסים!' : null;
+      g.wantsPhotoTimer = 1.4;
+    }
   }
 
   function finishArrival(g: WeddingGuestActor) {
@@ -160,10 +374,15 @@ export function createArrival(host: ArrivalHost): ArrivalController {
       if (a.poseT >= ARRIVAL.poseSec) {
         if (!a.photographed) {
           stats.missed++;
-          host.onMissed(g);
+          host.onMissed(g, 'wall');
         }
-        a.state = 'leaving';
+        // after the photo wall: mingle in the garden (or go straight in once the ceremony was called)
+        a.state = calledIn ? 'leaving' : 'mingling';
       }
+      return;
+    }
+    if (a.state === 'mingling') {
+      updateMingling(g, dt, walkTo);
       return;
     }
     // leaving: through the hall door, then to the seat
@@ -201,7 +420,11 @@ export function createArrival(host: ArrivalHost): ArrivalController {
       }
     }
     arrivingGuests = arrivingGuests.filter((g) => g.arrival);
-    if ((arrivingGuests.length === 0 && stats.total > 0) || phaseTime > ARRIVAL.maxPhaseSec) {
+    // everyone has posed → mingle a while, then the ceremony is called and they go in
+    const stillComing = arrivingGuests.some((g) => g.arrival && g.arrival.state !== 'mingling' && g.arrival.state !== 'leaving');
+    if (!stillComing) sinceAllPosed += dt;
+    if (!calledIn && (sinceAllPosed >= MINGLE.afterLastPoseSec || phaseTime > ARRIVAL.maxPhaseSec)) callIn();
+    if ((arrivingGuests.length === 0 && stats.total > 0) || phaseTime > ARRIVAL.maxPhaseSec + 60) {
       host.onAllSeated();
     }
   }
@@ -209,6 +432,13 @@ export function createArrival(host: ArrivalHost): ArrivalController {
   return {
     get guests() {
       return arrivingGuests;
+    },
+    sideOf: (id: number) => yard.get(id)?.side ?? null,
+    get comingCount() {
+      return arrivingGuests.filter((g) => g.arrival && (g.arrival.state === 'waiting' || g.arrival.state === 'walking_in' || g.arrival.state === 'posing')).length;
+    },
+    get yardCount() {
+      return arrivingGuests.filter((g) => g.arrival?.state === 'mingling').length;
     },
     stats,
     start,
