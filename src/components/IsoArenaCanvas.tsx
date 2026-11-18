@@ -132,14 +132,13 @@ import {
 } from '../game/guestBehavior';
 import { FrameSubject, MagnetLedger, scoreFrame } from '../game/photoScoring';
 import { createArrival } from '../game/arrivalPhase';
+import { drawPhaseOverlay, drawPoseRings, receptionLabelHe } from '../render/arrivalOverlay';
 import * as mood from '../game/guestMood';
 import { cardCopySec, cardLimits } from '../game/cameraCard';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
-  ARRIVAL,
   EventPhaseId,
   PHASE_INTRO_SEC,
-  getPhaseInfo,
   rateArrivalShot,
 } from '../game/eventPhases';
 import {
@@ -5910,37 +5909,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       drawGuestHearts(ctx, [...guests, ...vipCouple, ...arrival.guests.filter((g) => g.arrival?.state !== 'waiting')], moodBook, originX, originY, player, gameClock);
 
-      // ARRIVAL: pose timer ring over posing guests (glows gold in the sweet spot)
-      if (eventPhase === 'arrival') {
-        ctx.save();
-        for (const g of arrival.guests) {
-          const a = g.arrival;
-          if (!a || a.state !== 'posing') continue;
-          const gi = worldToIso(g.x, g.y, 78);
-          const x = originX + gi.x;
-          const y = originY + gi.y;
-          const frac = Math.min(1, a.poseT / ARRIVAL.poseSec);
-          const peak = a.poseT >= ARRIVAL.peakStartSec && a.poseT <= ARRIVAL.peakEndSec;
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = 'rgba(15,23,42,0.7)';
-          ctx.beginPath();
-          ctx.arc(x, y, 8, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.strokeStyle = a.photographed ? '#4ade80' : peak ? '#fbbf24' : '#e2e8f0';
-          if (peak && !a.photographed) {
-            ctx.shadowColor = '#fbbf24';
-            ctx.shadowBlur = 10;
-          }
-          ctx.beginPath();
-          ctx.arc(x, y, 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - frac));
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-          ctx.font = '9px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(a.photographed ? '✅' : '📸', x, y + 3);
-        }
-        ctx.restore();
-      }
+      // ARRIVAL: pose timer ring over posing guests (arrivalOverlay.ts)
+      if (eventPhase === 'arrival') drawPoseRings(ctx, arrival.guests, originX, originY);
 
       // Whole-frame score labels (Hebrew, RTL) floating above the photographed area
       if (frameLabels.length) {
@@ -6237,38 +6207,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.fillRect(0, 0, viewW, viewH);
       }
 
-      // EVENT PHASE: title card when a phase starts + live arrival progress (screen space)
+      // EVENT PHASE: title card when a phase starts + live arrival progress (screen space, arrivalOverlay.ts)
       if (stateRef.current === 'playing') {
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.direction = 'rtl';
-        if (phaseIntroTimer > 0) {
-          const info = getPhaseInfo(eventPhase);
-          const t = phaseIntroTimer / PHASE_INTRO_SEC;
-          const a = Math.min(1, (1 - t) * 6, t * 4);
-          ctx.globalAlpha = a;
-          ctx.fillStyle = 'rgba(10, 8, 20, 0.66)';
-          const w = Math.min(viewW - 32, 560);
-          ctx.fillRect(viewW / 2 - w / 2, viewH * 0.3 - 46, w, 92);
-          ctx.fillStyle = '#fde68a';
-          ctx.font = 'bold 30px "Heebo", "Assistant", sans-serif';
-          ctx.fillText(info.titleHe, viewW / 2, viewH * 0.3 - 4);
-          ctx.fillStyle = '#f8fafc';
-          ctx.font = '15px "Heebo", "Assistant", sans-serif';
-          ctx.fillText(info.goalHe, viewW / 2, viewH * 0.3 + 26, w - 24);
-          ctx.globalAlpha = 1;
-        }
-        if (eventPhase === 'arrival') {
-          const left = arrival.guests.length;
-          const label = `🚪 קבלת פנים · צולמו ${arrival.stats.photographed}/${arrival.stats.total} · ✨ זהב ${arrival.stats.gold} · 😕 פוספסו ${arrival.stats.missed} · עוד ${left} בדרך`;
-          ctx.font = 'bold 13px "Heebo", "Assistant", sans-serif';
-          const w = ctx.measureText(label).width + 24;
-          ctx.fillStyle = 'rgba(10, 8, 20, 0.6)';
-          ctx.fillRect(viewW / 2 - w / 2, 40, w, 24);
-          ctx.fillStyle = '#fde68a';
-          ctx.fillText(label, viewW / 2, 57);
-        }
-        ctx.restore();
+        drawPhaseOverlay(ctx, viewW, viewH, eventPhase, phaseIntroTimer, eventPhase === 'arrival' ? receptionLabelHe(arrival.stats, arrival.guests.length) : null);
       }
 
       // Update HUD at regular cadence
