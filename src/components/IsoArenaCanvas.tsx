@@ -4480,62 +4480,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           });
         }
       }
-      // Decorative full tables to give the hall its real scale (static seated guests)
-      {
-        const outfitsDecor = characterConfigRef.current.guestOutfits;
-        DECOR_TABLES.forEach((dt, di) => {
-          const dIso = worldToIso(dt.x, dt.y);
-          drawables.push({
-            sortY: dIso.y,
-            draw: () =>
-              drawLongBanquetTable(ctx, originX, originY, dt.x, dt.y, drawIsoBox, {
-                tableNumber: dt.number,
-                t: hallT,
-              }),
-          });
-          LONG_TABLE_SEATS.forEach((seat, si) => {
-            const gx = dt.x + seat.dx;
-            const gy = dt.y + seat.dy;
-            const gIso = worldToIso(gx, gy);
-            const style = outfitsDecor[(di * 5 + si * 3) % outfitsDecor.length];
-            const dummy: WeddingGuestActor = {
-              id: 500 + di * 10 + si,
-              role: 'table_guest',
-              outfitIndex: 0,
-              archetype: 'swarmer',
-              x: gx,
-              y: gy,
-              homeX: gx,
-              homeY: gy,
-              vx: 0,
-              vy: 0,
-              speed: 0,
-              dancePhase: 0,
-              danceTempo: 1,
-              danceMove: si % 2 === 0 ? 'eating' : 'toasting',
-              direction: seat.dir as IsoDirection,
-              strideDist: hallT * 6 + si,
-              outfitColor: style?.outfit ?? '#334155',
-              hairColor: style?.hair ?? '#1c1410',
-              isDress: style?.isDress ?? false,
-              hatType: 'none',
-              hasMagnet: false,
-              photoCount: 0,
-              celebrateTimer: 0,
-              hitFlashTimer: 0,
-              wantsPhotoTimer: 0,
-              speechBubbleText: null,
-              poseTimer: 0,
-              isSeated: true,
-            };
-            drawables.push({
-              sortY: gIso.y,
-              draw: () =>
-                drawWeddingGuestSprite(originX + gIso.x, originY + gIso.y, dummy, dummy.strideDist),
-            });
-          });
+      // Decorative full tables to give the hall its real scale (empty: guests are only real, moving actors)
+      DECOR_TABLES.forEach((dt) => {
+        const dIso = worldToIso(dt.x, dt.y);
+        drawables.push({
+          sortY: dIso.y,
+          draw: () => drawLongBanquetTable(ctx, originX, originY, dt.x, dt.y, drawIsoBox, { tableNumber: dt.number, t: hallT }),
         });
-      }
+      });
 
       // 2C. All-White Draped Chuppah with Baby's-Breath Crown, White Lounge Benches, Lanterns & Floral Pedestals (photos 7, 8, 9)
       // The chuppah's front post: redrawn over anyone standing behind it on the stage
