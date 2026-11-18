@@ -4,11 +4,12 @@
  * and the guest restrooms. Both open from the lobby's south side; the kitchen stays at the back
  * of house (service yard, venueOutside.ts).
  *
- * Geometry + drawing (code-drawn, like the lobby). Walls are low "cut-away" walls so the people
- * inside stay visible.
+ * Rooms and walls are code-drawn (like the lobby); the furniture is PixelLab art (docs/ASSETS.md,
+ * tools/make_room_props.py). Walls are low "cut-away" walls so the people inside stay visible.
  */
 
 import { worldToIso } from './rules.ts';
+import { drawPropSprite, type PropSprite } from './venueProps.ts';
 
 interface Rect {
   minX: number;
@@ -21,7 +22,7 @@ interface Rect {
 const LOBBY_FRONT_Y = 370;
 const WALL_Y = 375;
 
-export const RESTROOMS: Rect = { minX: 472, maxX: 556, minY: 380, maxY: 472 };
+export const RESTROOMS: Rect = { minX: 448, maxX: 556, minY: 380, maxY: 500 };
 export const BRIDAL_SUITE: Rect = { minX: 566, maxX: 658, minY: 380, maxY: 534 };
 
 /** Doorways from the lobby (clear of the lobby's sofa and plants). */
@@ -30,28 +31,60 @@ export const SUITE_DOOR: Rect = { minX: 607, maxX: 631, minY: LOBBY_FRONT_Y - 6,
 
 export const ROOMS_WALKABLE: Rect[] = [RESTROOMS, BRIDAL_SUITE, RESTROOM_DOOR, SUITE_DOOR];
 
-// Furniture (also collision boxes)
-const VANITY: Rect = { minX: 568, maxX: 582, minY: 398, maxY: 444 };
-const SUITE_SOFA: Rect = { minX: 638, maxX: 656, minY: 440, maxY: 506 };
-const SINKS: Rect = { minX: 474, maxX: 488, minY: 392, maxY: 440 };
-const STALLS: Rect[] = [
-  { minX: 500, maxX: 526, minY: 448, maxY: 470 },
-  { minX: 528, maxX: 554, minY: 448, maxY: 470 },
-];
-const FLOWERS = { x: 586, y: 520 };
+// Furniture: PixelLab sprites placed by their floor footprint (left ground corner = minX, maxY).
+// Measured by tools/make_room_props.py; `s` sets the footprint: lx·s × ly·s world units.
+const ROOM_SPRITES = {
+  vanity: { file: 'assets/aistudio/room-vanity.png', ax: 0, ay: 223, lx: 50, ly: 124, h: 249, s: 0.355 },
+  sofa: { file: 'assets/aistudio/room-sofa.png', ax: 0, ay: 178, lx: 92, ly: 154, h: 225, s: 0.31 },
+  flowers: { file: 'assets/aistudio/room-flowers.png', ax: 29, ay: 235, lx: 40, ly: 46, h: 256, s: 0.3 },
+  sinks: { file: 'assets/aistudio/room-sinks-mirror.png', ax: 1, ay: 179, lx: 178, ly: 54, h: 269, s: 0.26 },
+  stall: { file: 'assets/aistudio/room-stall.png', ax: 0, ay: 195, lx: 124, ly: 126, h: 258, s: 0.32 },
+} satisfies Record<string, PropSprite>;
+type RoomProp = keyof typeof ROOM_SPRITES;
 
-export const ROOM_OBSTACLES: Array<{ kind: 'box'; minX: number; minY: number; maxX: number; maxY: number }> = [
-  VANITY,
-  SUITE_SOFA,
-  SINKS,
-  ...STALLS,
-  { minX: FLOWERS.x - 7, maxX: FLOWERS.x + 7, minY: FLOWERS.y - 7, maxY: FLOWERS.y + 7 },
-].map((r) => ({ kind: 'box' as const, ...r }));
+interface Placed {
+  prop: RoomProp;
+  minX: number;
+  maxY: number;
+}
+
+/** Bridal suite: vanity and sofa against the west wall facing the room, flowers by the door. Restrooms:
+ *  sinks on the north wall, two stalls on the west wall with their doors facing the room. */
+const PLACED: Placed[] = [
+  { prop: 'vanity', minX: 568, maxY: 438 },
+  { prop: 'sofa', minX: 568, maxY: 520 },
+  { prop: 'flowers', minX: 640, maxY: 402 },
+  { prop: 'sinks', minX: 452, maxY: 396 },
+  { prop: 'stall', minX: 450, maxY: 452 },
+  { prop: 'stall', minX: 450, maxY: 496 },
+];
+
+const footprint = (pl: Placed): Rect => {
+  const sp = ROOM_SPRITES[pl.prop];
+  return { minX: pl.minX, maxX: pl.minX + sp.lx * sp.s, minY: pl.maxY - sp.ly * sp.s, maxY: pl.maxY };
+};
+
+export const ROOM_OBSTACLES: Array<{ kind: 'box'; minX: number; minY: number; maxX: number; maxY: number }> = PLACED.map((pl) => ({
+  kind: 'box' as const,
+  ...footprint(pl),
+}));
+
+const roomImgs = new Map<RoomProp, HTMLImageElement>();
+function roomImg(prop: RoomProp): HTMLImageElement | null {
+  if (typeof Image === 'undefined') return null;
+  let img = roomImgs.get(prop);
+  if (!img) {
+    img = new Image();
+    img.src = `${import.meta.env?.BASE_URL ?? '/'}${ROOM_SPRITES[prop].file}`;
+    roomImgs.set(prop, img);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
 
 /** Where the bride and groom wait in the suite (by the sofa, facing the room). */
 export const SUITE_SPOTS = {
-  bride: { x: 622, y: 482 },
-  groom: { x: 624, y: 458 },
+  bride: { x: 616, y: 492 },
+  groom: { x: 618, y: 468 },
 };
 
 /** Walking route from the suite into the hall for the grand entrance (suite → lobby → hall door → dance floor). */
@@ -188,76 +221,17 @@ export function getRoomDrawables(ctx: CanvasRenderingContext2D, ox: number, oy: 
   doorSign(RESTROOM_DOOR, '🚻 שירותים', '#e0f2fe');
   doorSign(SUITE_DOOR, '💍 חדר חתן וכלה', '#fbcfe8');
 
-  // restrooms: sink counter with a mirror, two stalls
-  list.push({
-    sortY: at(SINKS.maxX, SINKS.maxY),
-    draw: () => {
-      box(ctx, ox, oy, SINKS, 22, '#f8fafc', '#cbd5e1', '#94a3b8');
-      for (const y of [404, 428]) {
-        const b = p(ox, oy, (SINKS.minX + SINKS.maxX) / 2, y, 22);
-        ctx.fillStyle = '#e2e8f0';
-        ctx.beginPath();
-        ctx.ellipse(b.x, b.y, 5, 2.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    },
-  });
-  for (const [i, st] of STALLS.entries()) {
+  // furniture sprites (PixelLab)
+  for (const pl of PLACED) {
+    const fp = footprint(pl);
     list.push({
-      sortY: at(st.maxX, st.maxY),
+      sortY: at((fp.minX + fp.maxX) / 2, (fp.minY + fp.maxY) / 2),
       draw: () => {
-        box(ctx, ox, oy, st, 46, '#cbd5e1', '#94a3b8', '#7c8aa0');
-        const d = p(ox, oy, (st.minX + st.maxX) / 2, st.minY, 30);
-        label(ctx, d.x, d.y, i === 0 ? '♀' : '♂', '#f1f5f9', 11);
+        const img = roomImg(pl.prop);
+        if (img) drawPropSprite(ctx, img, ROOM_SPRITES[pl.prop], ox, oy, pl.minX, pl.maxY);
       },
     });
   }
-
-  // bridal suite: lit vanity mirror, sofa, flowers
-  list.push({
-    sortY: at(VANITY.maxX, VANITY.maxY),
-    draw: () => {
-      box(ctx, ox, oy, VANITY, 24, '#fdf2f8', '#e9c9d6', '#d8b0c0');
-      // mirror on the wall above (with bulbs)
-      const m = [p(ox, oy, VANITY.minX, VANITY.minY + 6, 34), p(ox, oy, VANITY.minX, VANITY.maxY - 6, 34), p(ox, oy, VANITY.minX, VANITY.maxY - 6, 70), p(ox, oy, VANITY.minX, VANITY.minY + 6, 70)];
-      ctx.fillStyle = '#b9cbd8';
-      ctx.strokeStyle = '#c9a54a';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      m.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      const glow = 0.75 + 0.25 * Math.sin(t * 3);
-      for (let k = 0; k < 5; k++) {
-        const q = p(ox, oy, VANITY.minX, VANITY.minY + 8 + k * 7.5, 72);
-        ctx.fillStyle = `rgba(255, 236, 179, ${glow})`;
-        ctx.beginPath();
-        ctx.arc(q.x, q.y, 1.8, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    },
-  });
-  list.push({
-    sortY: at(SUITE_SOFA.maxX, SUITE_SOFA.maxY),
-    draw: () => {
-      box(ctx, ox, oy, SUITE_SOFA, 12, '#f5d0dc', '#d9a7b8', '#c98fa3');
-      box(ctx, ox, oy, { minX: SUITE_SOFA.maxX - 5, maxX: SUITE_SOFA.maxX, minY: SUITE_SOFA.minY, maxY: SUITE_SOFA.maxY }, 26, '#f9dce5', '#d9a7b8', '#c98fa3');
-    },
-  });
-  list.push({
-    sortY: at(FLOWERS.x, FLOWERS.y),
-    draw: () => {
-      box(ctx, ox, oy, { minX: FLOWERS.x - 4, maxX: FLOWERS.x + 4, minY: FLOWERS.y - 4, maxY: FLOWERS.y + 4 }, 18, '#f8fafc', '#e2e8f0', '#cbd5e1');
-      const c = p(ox, oy, FLOWERS.x, FLOWERS.y, 26);
-      for (let k = 0; k < 9; k++) {
-        const a = (k / 9) * Math.PI * 2;
-        ctx.fillStyle = k % 3 === 0 ? '#ffffff' : k % 3 === 1 ? '#f9a8d4' : '#fecdd3';
-        ctx.beginPath();
-        ctx.arc(c.x + Math.cos(a) * 6, c.y + Math.sin(a) * 3 - 2, 2.6, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    },
-  });
+  void t;
   return list;
 }
