@@ -41,7 +41,11 @@
 | `aistudio/room-vanity.png` | שולחן איפור לכלה עם מראה מוארת וכיסא. PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a bridal makeup vanity table in white and blush pink, a large mirror on top framed by glowing round light bulbs…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
 | `aistudio/room-sofa.png` | ספת קטיפה ורודה. PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a luxurious blush-pink velvet loveseat sofa with gold legs…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
 | `aistudio/room-flowers.png` | זר על עמוד. PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a tall white pedestal stand with a lush wedding flower arrangement of white roses and pink peonies…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
-| `aistudio/room-sinks-mirror.png` | משטח כיורים עם מראה (משוקף: צמוד לקיר הצפוני). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a white marble restroom vanity counter with two round sinks and chrome faucets, a long wall mirror behind it…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
+| ~~`aistudio/room-sinks-mirror.png`~~ | **נמחק (18.11)** — הוחלף באי כיורים במרכז החדר (`room-island.png`) | — | — | 15 |
+| `aistudio/room-accessible.png` | תא שירותים לנכים: אסלה, מאחזי יד, כיור נמוך. PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "an accessible wheelchair restroom corner: white toilet with chrome grab bars, low wall-mounted sink…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
+| `aistudio/room-island.png` | אי כיורים כפול עם ברזים (במרכז חדר השירותים). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a freestanding white marble double-sided sink island with chrome faucets…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
+| `aistudio/room-dryer.png` | מייבש ידיים על הקיר. PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a wall-mounted stainless steel hand dryer…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
+| `aistudio/room-plant.png` | עציץ קישוט (שירותים, מסדרון). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a decorative potted green plant in a white ceramic pot…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
 | `aistudio/room-stall.png` | תא שירותים (משמש פעמיים). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a single restroom toilet stall cubicle with light grey partition walls and a closed grey door…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
 | `aistudio/dj-stage.png` | כנ"ל | "an empty raised wedding DJ stage platform… glowing cyan LED strip… two small steps", seed 7. **במראה אופקית** | `PROP_SPRITES.djStage`, scale 0.8 | 15 |
 | `aistudio/dj-console.png` | כנ"ל | "a modern DJ booth console table… LED front panel faces the viewer on the bottom-left side", seed 7 | `PROP_SPRITES.djConsole`, scale 0.6 | 15 |
@@ -56,7 +60,7 @@
 
 ## סה"כ יצירות PixelLab שנוצלו (נכון ל-17.11)
 
-~600 מתוך 2,000 (נשארו ~1,400 ב-18.11). בדיקת יתרה: `GET https://api.pixellab.ai/v2/balance`.
+~660 מתוך 2,000 (נשארו ~1,340 ב-18.11). בדיקת יתרה: `GET https://api.pixellab.ai/v2/balance`.
 
 ## הוספת נכס חדש — צ'ק-ליסט
 

@@ -1,15 +1,16 @@
 """Clean PixelLab room-furniture renders and measure their isometric footprint.
-usage: python3 make_room_props.py <src_dir> <out_dir>
+usage: python3 make_room_props.py <src_dir> <out_dir> [name ...]   (default: every <name>_0.png in src_dir)
 Keeps the big connected parts (drops stray speckles), crops to content, writes room-<name>.png
-(+ a mirrored stall), and prints ax, ay, lx, ly for venueRooms.ts:
+and prints ax, ay, lx, ly for venueRooms.ts:
   bottom corner = lowest opaque pixel; left corner = leftmost column of the lower half;
   lx = bottom.x - left.x, ly = right.x - bottom.x, ay = bottom.y - lx/2.
 """
 import sys
+import glob
+import os
 from collections import deque
-from PIL import Image, ImageOps
+from PIL import Image
 
-NAMES = ['vanity', 'sofa', 'flowers', 'sinks', 'stall']
 
 def keep_big_parts(im, min_px=40):
     px = im.load(); w, h = im.size
@@ -46,11 +47,9 @@ def measure(im):
     return dict(ax=round(lx_), ay=round(by - lx / 2), lx=round(lx), ly=round(ly), w=w, h=h)
 
 src, out = sys.argv[1], sys.argv[2]
-for n in NAMES:
+names = sys.argv[3:] or sorted(os.path.basename(f)[:-6] for f in glob.glob(f'{src}/*_0.png'))
+for n in names:
     im = keep_big_parts(Image.open(f'{src}/{n}_0.png').convert('RGBA'))
     im = im.crop(im.getbbox())
-    # the sinks stand against the north wall (long side along x): mirrored copy
-    variants = [(n, im)] + ([(n + '-mirror', ImageOps.mirror(im))] if n == 'sinks' else [])
-    for name, v in variants:
-        v.save(f'{out}/room-{name}.png')
-        print(name, measure(v))
+    im.save(f'{out}/room-{n}.png')
+    print(n, measure(im))
