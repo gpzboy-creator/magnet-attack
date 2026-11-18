@@ -131,6 +131,7 @@ import { FrameSubject, MagnetLedger, scoreFrame } from '../game/photoScoring';
 import { createArrival } from '../game/arrivalPhase';
 import { drawPhaseOverlay, drawPoseRings, receptionLabelHe } from '../render/arrivalOverlay';
 import * as mood from '../game/guestMood';
+import { createEntrance, idleCoupleInSuite, startEntrance, stepEntrance } from '../game/coupleSuite';
 import { cardCopySec, cardLimits } from '../game/cameraCard';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
@@ -1063,7 +1064,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let combo = 0;
     let comboTimer = 0;
     let wave = 1;
-    let magnetsPrintedThisWave = 0;
     let totalMagnetsAllWaves = 0;
     let availableMagnetsOnBoard = 0;
     let pendingBoardSticks = 0;
@@ -1084,6 +1084,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let guests: WeddingGuestActor[] = [];
     // The unique bride & groom (kept out of the crowd-ratio pool, but photographable like any guest)
     let vipCouple: WeddingGuestActor[] = [];
+    const coupleEntrance = createEntrance();
     // EVENT PHASES (eventPhases.ts): arrival (guests come in & pose) → dancing (the board game)
     let eventPhase: EventPhaseId = 'arrival';
     let phaseIntroTimer = 0;
@@ -1402,7 +1403,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       const batch = player.cutMagnetsInHand;
       player.cutMagnetsInHand = 0;
-      magnetsPrintedThisWave += batch;
       totalMagnetsAllWaves += batch;
       availableMagnetsOnBoard += batch;
 
@@ -1590,7 +1590,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
     const spawnWave = (waveNum: number) => {
       clearAllTimeouts();
-      magnetsPrintedThisWave = 0;
       pendingBoardSticks = 0;
       player.photosInCamera = 0;
       player.photosOnComputer = 0;
@@ -1830,6 +1829,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
     function startDancingPhase() {
       arrival.finishAll();
+      startEntrance(coupleEntrance, vipCouple); // the bride & groom walk from the bridal suite into the hall
       eventPhase = 'dancing';
       phaseIntroTimer = PHASE_INTRO_SEC;
       phaseTime = 0;
@@ -2065,7 +2065,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       combo = 0;
       comboTimer = 0;
       wave = 1;
-      magnetsPrintedThisWave = 0;
       totalMagnetsAllWaves = 0;
       availableMagnetsOnBoard = 0;
       pendingBoardSticks = 0;
@@ -3294,7 +3293,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 layer: isBackFacingDirection(player.direction) ? 'behind' : 'front',
                 targets: [
                   ...guests,
-                  ...(eventPhase !== 'arrival' ? vipCouple : []),
+                  ...vipCouple,
                   ...arrival.guests.filter((g) => g.arrival && g.arrival.state !== 'waiting'),
                 ],
                 tag: isWide ? 'wide' : 'pulse',
@@ -3972,7 +3971,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             frameLabels[li].y -= simDt * 14;
             if (frameLabels[li].life <= 0) frameLabels.splice(li, 1);
           }
-          if (eventPhase !== 'arrival') updateVipCouple(simDt);
+          if (eventPhase === 'arrival') idleCoupleInSuite(vipCouple, simDt); // in the bridal suite (coupleSuite.ts)
+          else if (!stepEntrance(coupleEntrance, vipCouple, simDt)) updateVipCouple(simDt);
 
           // ====================================================================
           // UPDATE FLASH SHOTS & PHOTOGRAPH GUESTS (WITH VIP, FRAME PREFERENCES & TABLE REVIVAL)
@@ -3981,7 +3981,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           const arrivingVisible = arrival.guests.filter((g) => g.arrival && g.arrival.state !== 'waiting');
           const photographable = [
             ...guests,
-            ...(eventPhase !== 'arrival' ? vipCouple : []),
+            ...vipCouple,
             ...arrivingVisible,
           ];
           for (const pr of projectiles) {
@@ -5575,9 +5575,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         }
 
         // The bride & groom (embracing under the chuppah during the kiss moment)
-        if (eventPhase === 'arrival') {
-          // the bride & groom are at the family photo session during the arrival
-        } else if (castSheet?.embrace && isCoupleAtChuppah()) {
+        if (castSheet?.embrace && isCoupleAtChuppah()) {
           const [bride, groom] = vipCouple;
           const mx = (bride.x + groom.x) / 2;
           const my = (bride.y + groom.y) / 2;

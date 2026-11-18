@@ -31,7 +31,7 @@ React + TypeScript + Vite, ציור ישיר על **Canvas2D** — אין מנו
 | `public/assets/aistudio/`, `public/assets/characters/` | ספרייטים (PixelLab ואחרים) | **שם קובץ חדש בכל שינוי תוכן** (קאש של GitHub Pages) |
 | `tools/*.py` | עיבוד ספרייטים (חיתוך, מראה, גיליונות) | כל נכס שעבר עיבוד — עם הסקריפט שלו |
 
-מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts`, `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה).
+מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts`, `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה), `venueRooms.ts` (חדר חתן וכלה + שירותים מדרום ללובי), `coupleSuite.ts` (הזוג בחדר הכלה ויציאה לאולם).
 
 ## פקודות
 

@@ -15,6 +15,7 @@
 import { CHUPPAH_POS, worldToIso } from './rules.ts';
 import { BRIDGE_FOOT, POOL_OBSTACLES } from './chuppahIsland.ts';
 import { PROP_SPRITES, propFootprint } from './venueProps.ts';
+import { ROOMS_WALKABLE, ROOM_OBSTACLES, drawRoomsGround, getRoomDrawables } from './venueRooms.ts';
 
 export type Rect = { minX: number; maxX: number; minY: number; maxY: number };
 
@@ -90,6 +91,7 @@ export const COURTYARD_LAMPS: Array<[number, number]> = [
 
 export const WALKABLE_OUTSIDE: Rect[] = [
   HALL_EXIT, LOBBY, GARDEN_GATE, COURTYARD, PLAZA_GATE, PLAZA, BUFFER_WALK, PARKING, SERVICE_APPROACH, SERVICE_EXIT, SERVICE_YARD,
+  ...ROOMS_WALKABLE, // bridal suite + restrooms off the lobby (venueRooms.ts)
 ];
 
 export const insideRect = (r: Rect, x: number, y: number) =>
@@ -192,6 +194,8 @@ export const OUTSIDE_OBSTACLES: Array<
   { kind: 'box', minX: 1940, minY: 70, maxX: 1990, maxY: 120 },
   // Back of house: the kitchen building
   { kind: 'box', ...KITCHEN },
+  // Bridal suite + restrooms furniture (venueRooms.ts)
+  ...ROOM_OBSTACLES,
   // Courtyard: fountain, olive trees, benches, lamps
   { kind: 'circle', x: FOUNTAIN_POS.x, y: FOUNTAIN_POS.y, r: 34 },
   ...OLIVE_TREES.map(([x, y]) => ({ kind: 'circle' as const, x, y, r: 16 })),
@@ -490,6 +494,8 @@ export function drawOutsideGround(ctx: CanvasRenderingContext2D, ox: number, oy:
   ctx.fill();
   ctx.stroke();
   void t;
+  // --- BRIDAL SUITE + RESTROOMS off the lobby's south side (venueRooms.ts)
+  drawRoomsGround(ctx, ox, oy);
 
   // --- WALKWAY from the hall to the lobby door
   ctx.fillStyle = '#3d4049';
@@ -1093,6 +1099,7 @@ export function getOutsideDrawables(ctx: CanvasRenderingContext2D, ox: number, o
   // Back of house
   list.push({ sortY: at(SERVICE_DOOR_X + 15, SERVICE_EXIT.maxY), draw: () => doorFrame(ctx, ox, oy, SERVICE_DOOR_X + 15, SERVICE_EXIT.minY - 4, SERVICE_EXIT.maxY + 4, 100, 'שירות · ספקים', false) });
   list.push({ sortY: at(KITCHEN.maxX, KITCHEN.maxY), draw: () => kitchen(ctx, ox, oy, t) });
+  list.push(...getRoomDrawables(ctx, ox, oy, t));
   {
     const r: Rect = { minX: SERVICE_YARD.minX + 30, maxX: SERVICE_YARD.maxX, minY: SERVICE_YARD.maxY + 4, maxY: SERVICE_YARD.maxY + 22 };
     list.push({ sortY: at(r.maxX, r.maxY), draw: () => isoBox(ctx, ox, oy, r, 22, '#2f6b3a', '#1f4d29', '#285c33') });
