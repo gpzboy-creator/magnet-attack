@@ -22,8 +22,8 @@ interface Rect {
 const LOBBY_FRONT_Y = 370;
 const WALL_Y = 375;
 
-export const RESTROOMS: Rect = { minX: 448, maxX: 556, minY: 380, maxY: 500 };
-export const BRIDAL_SUITE: Rect = { minX: 566, maxX: 658, minY: 380, maxY: 534 };
+export const RESTROOMS: Rect = { minX: 448, maxX: 572, minY: 380, maxY: 560 };
+export const BRIDAL_SUITE: Rect = { minX: 582, maxX: 686, minY: 380, maxY: 610 };
 
 /** Doorways from the lobby (clear of the lobby's sofa and plants). */
 export const RESTROOM_DOOR: Rect = { minX: 500, maxX: 524, minY: LOBBY_FRONT_Y - 6, maxY: RESTROOMS.minY + 6 };
@@ -51,12 +51,12 @@ interface Placed {
 /** Bridal suite: vanity and sofa against the west wall facing the room, flowers by the door. Restrooms:
  *  sinks on the north wall, two stalls on the west wall with their doors facing the room. */
 const PLACED: Placed[] = [
-  { prop: 'vanity', minX: 568, maxY: 438 },
-  { prop: 'sofa', minX: 568, maxY: 520 },
-  { prop: 'flowers', minX: 640, maxY: 402 },
+  { prop: 'vanity', minX: 585, maxY: 452 },
+  { prop: 'sofa', minX: 585, maxY: 572 },
+  { prop: 'flowers', minX: 666, maxY: 404 },
   { prop: 'sinks', minX: 452, maxY: 396 },
-  { prop: 'stall', minX: 450, maxY: 452 },
-  { prop: 'stall', minX: 450, maxY: 496 },
+  { prop: 'stall', minX: 451, maxY: 478 },
+  { prop: 'stall', minX: 451, maxY: 530 },
 ];
 
 const footprint = (pl: Placed): Rect => {
@@ -83,8 +83,8 @@ function roomImg(prop: RoomProp): HTMLImageElement | null {
 
 /** Where the bride and groom wait in the suite (by the sofa, facing the room). */
 export const SUITE_SPOTS = {
-  bride: { x: 616, y: 492 },
-  groom: { x: 618, y: 468 },
+  bride: { x: 640, y: 560 },
+  groom: { x: 644, y: 534 },
 };
 
 /** Walking route from the suite into the hall for the grand entrance (suite → lobby → hall door → dance floor). */
@@ -166,10 +166,10 @@ export function drawRoomsGround(ctx: CanvasRenderingContext2D, ox: number, oy: n
   }
   // bridal suite: blush carpet with a gold-edged rug
   floor(ctx, ox, oy, BRIDAL_SUITE, '#e9cfd2');
-  floor(ctx, ox, oy, { minX: 590, maxX: 632, minY: 440, maxY: 512 }, '#f6e3e5');
+  floor(ctx, ox, oy, { minX: 622, maxX: 672, minY: 500, maxY: 590 }, '#f6e3e5');
   ctx.strokeStyle = '#c9a54a';
   ctx.lineWidth = 1.2;
-  const a = p(ox, oy, 592, 442), b = p(ox, oy, 630, 442), c = p(ox, oy, 630, 510), d = p(ox, oy, 592, 510);
+  const a = p(ox, oy, 624, 502), b = p(ox, oy, 670, 502), c = p(ox, oy, 670, 588), d = p(ox, oy, 624, 588);
   ctx.beginPath();
   ctx.moveTo(a.x, a.y);
   ctx.lineTo(b.x, b.y);
