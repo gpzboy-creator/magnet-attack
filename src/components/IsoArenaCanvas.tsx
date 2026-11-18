@@ -5679,11 +5679,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               },
             });
           }
-          // The reception garden's bar (PixelLab)
+          // The reception garden's bar (PixelLab); depth = footprint centre: front (+x/+y) sides draw over it
           {
             const r = RECEPTION_BAR;
             drawables.push({
-              sortY: worldToIso(r.maxX, r.maxY).y,
+              sortY: worldToIso((r.minX + r.maxX) / 2, (r.minY + r.maxY) / 2).y,
               draw: () => {
                 const img = propImgs.get('bar');
                 if (img) drawPropSprite(ctx, img, PROP_SPRITES.bar, originX, originY, r.minX, r.maxY);
