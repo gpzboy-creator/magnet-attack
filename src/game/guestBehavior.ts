@@ -47,7 +47,7 @@ export function assignGuestTypes(params: {
     rng
   );
   const seekers = Math.max(1, Math.round(count * SPAWN_WEIGHTS.attention_seeker));
-  const trackers = Math.max(1, Math.round(count * SPAWN_WEIGHTS.impatient_tracker));
+  const trackers = SPAWN_WEIGHTS.impatient_tracker > 0 ? Math.max(1, Math.round(count * SPAWN_WEIGHTS.impatient_tracker)) : 0;
   free.slice(0, seekers).forEach((i) => (types[i] = 'attention_seeker'));
   free.slice(seekers, seekers + trackers).forEach((i) => (types[i] = 'impatient_tracker'));
   return types;

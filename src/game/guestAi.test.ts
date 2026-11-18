@@ -21,14 +21,14 @@ function seeded(seed = 1) {
   };
 }
 
-test('distribution: couples as whole pairs, ~10% seekers, ~10% trackers, rest regular', () => {
+test('distribution: couples as whole pairs, ~10% seekers, no trackers (replaced by the promise), rest regular', () => {
   const pairs: Array<[number, number]> = [[0, 4], [1, 5], [2, 6], [8, 12], [9, 13], [10, 14], [16, 17]];
   const types = assignGuestTypes({ count: 20, partnerPairs: pairs, rng: seeded(7) });
   const count = (t: string) => types.filter((x) => x === t).length;
   assert.equal(count('potential_couple'), 4);
   assert.equal(count('attention_seeker'), 2);
-  assert.equal(count('impatient_tracker'), 2);
-  assert.equal(count('regular'), 12);
+  assert.equal(count('impatient_tracker'), 0);
+  assert.equal(count('regular'), 14);
   // Couples come as complete pairs
   for (const [a, b] of pairs) {
     assert.equal(types[a] === 'potential_couple', types[b] === 'potential_couple');

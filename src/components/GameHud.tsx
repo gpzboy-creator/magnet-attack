@@ -38,6 +38,8 @@ export interface HudSnapshot {
   wave: number;
   magnetsPrinted?: number;
   targetMagnets?: number;
+  /** A magnet can be promised to the guests in the last shot right now (Q / 🤝). */
+  canPromise?: boolean;
   trackTimeSec?: number;
   stageTitleHe?: string;
   photosInCamera?: number;
@@ -190,7 +192,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 
   // ---- Derived values -------------------------------------------------------
   const magnetsPrinted = hud.magnetsPrinted ?? 0;
-  const targetMagnets = hud.targetMagnets ?? 10;
+  const targetMagnets = hud.targetMagnets ?? 0;
   const trackTimeSec = hud.trackTimeSec ?? 60;
   const formattedTime = `${Math.floor(trackTimeSec / 60)}:${String(trackTimeSec % 60).padStart(2, '0')}`;
   const photosInCamera = hud.photosInCamera ?? 0;
@@ -532,11 +534,47 @@ export const GameHud: React.FC<GameHudProps> = ({
         {isTouch && <div style={{ opacity: pipelineOpacity }}>{pipelineChips}</div>}
       </div>
 
+      {/* Promise window right after a shot: "זה למגנט!" (Q on keyboard, or tap) — bottom centre, clear of the touch controls */}
+      {hud.canPromise && (
+        <button
+          type="button"
+          data-testid="hud-promise"
+          dir="rtl"
+          className="pulse"
+          // a click on the button must not also fire the camera (the canvas listens on window)
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ', key: 'q' }));
+            window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyQ', key: 'q' }));
+          }}
+          style={{
+            position: 'fixed',
+            zIndex: 40,
+            pointerEvents: 'auto',
+            cursor: 'pointer',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bottom: isTouch ? 64 : 54,
+            padding: isTouch ? '12px 16px' : '8px 14px',
+            borderRadius: 999,
+            border: '2px solid #fbbf24',
+            background: 'rgba(28,25,23,0.92)',
+            color: '#fde68a',
+            fontWeight: 800,
+            fontSize: isTouch ? 16 : 14,
+            boxShadow: '0 0 14px rgba(251,191,36,0.55)',
+          }}
+        >
+          🤝 זה למגנט!{isTouch ? '' : ' [Q]'}
+        </button>
+      )}
+
       {/* ── TOP-RIGHT: progress (quota · score · DJ timer) + system icons ────── */}
       <div className="mhud-tr">
         <div className="mhud-row" style={{ opacity: progressOpacity }}>
-          <span className="mhud-pill" title="מגנטים בשלב">
-            🧲 <span className="num" data-testid="hud-magnets">{magnetsPrinted}/{targetMagnets}</span>
+          <span className="mhud-pill" title="מגנטים פתוחים (צולמו ועוד לא נמסרו) · מתוכם מובטחים">
+            🧲 <span className="num" data-testid="hud-magnets">{magnetsPrinted}</span>
+            {targetMagnets > 0 && <> · 🤝 <span className="num">{targetMagnets}</span></>}
           </span>
           <span className="mhud-pill" title="ניקוד">
             ⭐ <span className="num" data-testid="hud-score">{Math.round(hud.score)}</span>
@@ -551,19 +589,11 @@ export const GameHud: React.FC<GameHudProps> = ({
               ⏳ <span className="num">{hud.naggingGuests}</span>
             </span>
           )}
-          <span className={`mhud-pill ${timerCritical ? 'warn pulse' : ''}`} title="זמן לשיר">
+          <span className={`mhud-pill ${timerCritical ? 'warn pulse' : ''}`} title="זמן עד סוף הערב">
             ♫ <span className="num">{formattedTime}</span>
           </span>
         </div>
-        {/* Quota progress hairline under the numbers */}
-        <div className="mhud-bar hair" style={{ width: '100%', opacity: progressOpacity * 0.9 }}>
-          <i
-            style={{
-              width: `${Math.min(100, (magnetsPrinted / Math.max(1, targetMagnets)) * 100)}%`,
-              background: 'var(--amber)',
-            }}
-          />
-        </div>
+
 
         <div
           className="mhud-row"

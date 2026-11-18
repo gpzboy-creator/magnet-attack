@@ -16,7 +16,8 @@ export type GuestType =
 export const SPAWN_WEIGHTS = {
   potential_couple: 0.2, // whole pairs only (rounded down to an even count)
   attention_seeker: 0.1,
-  impatient_tracker: 0.1,
+  // Replaced by the magnet promise (guestMood.ts): every promised guest now waits for their magnet.
+  impatient_tracker: 0,
   // the rest are regular guests
 } as const;
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { GameState } from '../game/rules';
+import type { EveningSummary } from '../game/guestMood';
 
 interface TitleAndModalsProps {
   gameState: GameState;
@@ -8,6 +9,8 @@ interface TitleAndModalsProps {
   bestScore: number;
   waveReached: number;
   enemiesDefeated: number;
+  /** Hearts / stars summary of the evening (guestMood.ts). */
+  evening?: EveningSummary | null;
   totalFramesExtracted: number;
   onStartGame: () => void;
   onResumeGame: () => void;
@@ -22,6 +25,7 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
   bestScore,
   waveReached,
   enemiesDefeated,
+  evening,
   onStartGame,
   onResumeGame,
   onReturnTitle,
@@ -269,18 +273,31 @@ export const TitleAndModals: React.FC<TitleAndModalsProps> = ({
       >
         <div>
           <div className="text-xs font-mono uppercase tracking-wider text-amber-400">
-            {victory
-              ? 'כל האורחים קיבלו מגנטים מרהיבים למקרר!'
-              : 'המוזיקה הסתיימה! האורחים נהנו והודו על המגנטים'}
+            {victory ? 'הערב הסתיים — האורחים מרוצים!' : 'הערב הסתיים — יותר מדי אורחים לא מרוצים'}
           </div>
           <h2 className="text-2xl font-black tracking-tight text-white mt-1">
-            {victory ? 'אלוף צילומי המגנטים!' : 'סיום סט הצילומים'}
+            {victory ? 'אלוף צילומי המגנטים!' : 'בבעיה...'}
           </h2>
         </div>
 
+        {evening && (
+          <div className="text-center" data-testid="evening-stars">
+            <div className="text-4xl tracking-widest" aria-label={`${evening.stars} כוכבים מתוך 3`}>
+              {[0, 1, 2].map((i) => (
+                <span key={i} className={i < evening.stars ? 'text-amber-400' : 'text-stone-700'}>★</span>
+              ))}
+            </div>
+            <div className="text-xs text-amber-100/80 mt-2 leading-relaxed">
+              ❤ {Math.round(evening.happyShare * 100)}% אורחים מרוצים (2+ לבבות) · 📸 צולמו {Math.round(evening.photographedShare * 100)}%
+              {evening.brokenPromises > 0 && <> · 💔 {evening.brokenPromises} הבטחות שבורות</>}
+            </div>
+            <div className="text-[10px] text-stone-500 mt-1">כוכב: 60% · שניים: 75% · שלושה: 90%</div>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-3 font-mono tabular-nums">
           <div className="rounded-lg bg-stone-950 border border-stone-800 p-3">
-            <div className="text-[10px] text-amber-200/70">ניקוד שמחה</div>
+            <div className="text-[10px] text-amber-200/70">טיפים</div>
             <div className="text-lg font-bold text-white">
               {Math.round(score)}
             </div>

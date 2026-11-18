@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { EveningSummary } from './game/guestMood';
 import {
   GameState,
   MagnetFrameId,
@@ -95,6 +96,7 @@ export default function App() {
     bestScore: 0,
     wave: 1,
     kills: 0,
+    evening: null as EveningSummary | null,
   });
 
   const [hud, setHud] = useState<HudSnapshot>({
@@ -248,7 +250,7 @@ export default function App() {
     mobileControlsOverride !== null ? mobileControlsOverride : isMobileScreen;
 
   const handleGameOver = useCallback(
-    (victory: boolean, finalScore: number, wave: number, kills: number) => {
+    (victory: boolean, finalScore: number, wave: number, kills: number, evening?: EveningSummary | null) => {
       document.body.dataset.state = 'gameover';
       setEndSummary((prev) => ({
         victory,
@@ -256,6 +258,7 @@ export default function App() {
         bestScore: Math.max(prev.bestScore, finalScore),
         wave,
         kills,
+        evening: evening ?? null,
       }));
       setGameState('gameover');
     },
@@ -464,6 +467,7 @@ export default function App() {
         bestScore={Math.max(endSummary.bestScore, hud.bestScore)}
         waveReached={gameState === 'gameover' ? endSummary.wave : hud.wave}
         enemiesDefeated={endSummary.kills}
+        evening={gameState === 'gameover' ? endSummary.evening : null}
         totalFramesExtracted={sheetState.atlas.frames.length}
         onStartGame={handleStartGame}
         onResumeGame={handleResumeGame}

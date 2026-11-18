@@ -23,14 +23,12 @@ import {
   calculateWorkstationJobTiming,
   clampDt,
   computeCombinedMovementVector,
-  computePartyJoyTick,
   computeSimDt,
   createInitialMagnetDeliveryTracker,
   createVipEvent,
   doesShotCountForVipEvent,
   evaluateDancefloorCrowdState,
   evaluateFramePreferenceMatch,
-  evaluateGuestJoyFromMagnetDelivery,
   evaluateGuestJoyFromShot,
   getActiveWorkflowObjective,
   getMaxCameraCapacity,
@@ -133,8 +131,10 @@ import {
   stepBehavior,
   wantsToApproachPhotographer,
 } from '../game/guestBehavior';
-import { FrameSubject, MagnetLedger, scoreCaptureExtras, scoreFrame } from '../game/photoScoring';
+import { FrameSubject, MagnetLedger, scoreFrame } from '../game/photoScoring';
 import { createArrival } from '../game/arrivalPhase';
+import * as mood from '../game/guestMood';
+import { drawGuestHearts } from '../render/guestHearts';
 import {
   ARRIVAL,
   EventPhaseId,
@@ -201,7 +201,7 @@ interface IsoArenaCanvasProps {
   onOpenBoardModal?: () => void;
   onOpenWorkstationModal?: () => void;
   onHudUpdate: (snapshot: HudSnapshot) => void;
-  onGameOver: (victory: boolean, finalScore: number, wave: number, kills: number) => void;
+  onGameOver: (victory: boolean, finalScore: number, wave: number, kills: number, evening?: mood.EveningSummary | null) => void;
 }
 
 export interface WeddingGuestActor {
@@ -1099,13 +1099,16 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       takeHallGuests: () => { const hall = guests; guests = []; return hall; },
       seatGuest: (g) => { guests.push(g); },
       onMissed: (g) => {
-        applyScoreDelta(-ARRIVAL.missPenalty);
-        addFrameLabel(`-${ARRIVAL.missPenalty}`, g.x, g.y, '#f87171', '😕 פספסת תמונה בכניסה');
+        mood.onArrivalMissed(moodBook, g.id);
+        addFrameLabel('−❤', g.x, g.y, '#f87171', '😕 פספסת תמונה בכניסה');
       },
       onAllSeated: () => startDancingPhase(),
     });
     // Who is in each photo on its way through camera → laptop → sheets → board (FIFO)
     const magnetLedger = new MagnetLedger();
+    // Hearts per guest, magnet promises, stars at the end of the evening (guestMood.ts)
+    let moodBook = mood.createMoodBook();
+    let eveningSummary: mood.EveningSummary | null = null;
     // Business reputation ("לידים") from photographing potential couples
     let reputation = 0;
     // Game clock for photo timestamps
@@ -1443,8 +1446,15 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       // Match the delivered magnets back to the guests in those photos (oldest photos first)
       const delivered = magnetLedger.deliver(batch);
+      let tips = 0;
+      const kinds: Record<mood.DeliveryKind, number> = { on_time: 0, surprise: 0, late: 0 };
       for (const entry of delivered) {
         if (entry.guestId == null) continue;
+        const paid = mood.onMagnetDelivered(moodBook, entry.guestId);
+        if (paid) {
+          tips += paid.tip;
+          kinds[paid.kind]++;
+        }
         const owner = guests.find((g) => g.id === entry.guestId);
         if (!owner?.behavior) continue;
         const res = onMagnetDelivered(owner.behavior, Math.random);
@@ -1452,18 +1462,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         if (res.events.length) applyBehaviorEvents(owner, res.events);
       }
 
-      const deliveryEval = evaluateGuestJoyFromMagnetDelivery({
-        batchCount: batch,
-        deliveryTracker: magnetDeliveryTracker,
-      });
-
-      const gainedScore = batch * 150 + combo * 45 + deliveryEval.scoreBonus;
-      score += gainedScore;
+      score += tips;
       bestScore = Math.max(bestScore, score);
-
-      player.partyJoy = Math.min(100, player.partyJoy + deliveryEval.joyDelta);
       const frameCfg = MAGNET_FRAMES[selectedFrameRef.current];
-      player.stationFeedbackText = deliveryEval.feedbackHe;
+      player.stationFeedbackText = mood.deliveryFeedbackHe(batch, tips, kinds);
       player.stationFeedbackTimer = 3.5;
 
       // Reset delivery SLA timer for the next batch if all items are delivered
@@ -1596,11 +1598,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       availableMagnetsOnBoard--;
       magnetsTakenByGuests++;
-      score += 300;
-      bestScore = Math.max(bestScore, score);
-      player.partyJoy = Math.min(100, player.partyJoy + 20);
       sound.playFanfare(true);
-      player.stationFeedbackText = 'לקחת מגנט מזכרת מושלם מהלוח! 🧲✨ (+300 נקודות)';
+      player.stationFeedbackText = 'לקחת מגנט מזכרת מושלם מהלוח! 🧲✨';
       player.stationFeedbackTimer = 3.0;
       spawnParticles(player.x, player.y, 24, '#fbbf24', 140, 50);
     };
@@ -1611,7 +1610,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
     const spawnWave = (waveNum: number) => {
       clearAllTimeouts();
-      const cfg = getWaveConfig(waveNum);
       magnetsPrintedThisWave = 0;
       pendingBoardSticks = 0;
       player.photosInCamera = 0;
@@ -1621,7 +1619,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.cameraOnDesk = false;
       player.transferAnimTimer = 0;
       player.transferBatch = 0;
-      trackTimeRemaining = cfg.trackDurationSec;
+      trackTimeRemaining = mood.MOOD.danceSetSec;
 
       // Spawn first VIP Moment right away so the hall feels alive!
       vipEvent = createVipEvent(vipEventSeq++);
@@ -1833,7 +1831,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
       // ARRIVAL PHASE: nobody is in the hall yet — every guest comes in through the lobby
-      if (waveNum === 1) startArrivalPhase();
+      if (waveNum === 1) {
+        moodBook = mood.createMoodBook();
+        eveningSummary = null;
+        mood.registerGuests(moodBook, guests.map((g) => g.id));
+        startArrivalPhase();
+      }
     };
 
     function startArrivalPhase() {
@@ -1851,7 +1854,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       eventPhase = 'dancing';
       phaseIntroTimer = PHASE_INTRO_SEC;
       phaseTime = 0;
-      trackTimeRemaining = getWaveConfig(wave).trackDurationSec;
+      trackTimeRemaining = Number(new URLSearchParams(window.location.search).get('evening')) || mood.MOOD.danceSetSec;
       vipEvent = createVipEvent(vipEventSeq++);
       nextVipCooldown = 5.0;
       sound.playFanfare(true);
@@ -2733,7 +2736,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               isWin,
               score,
               wave,
-              totalMagnetsAllWaves
+              totalMagnetsAllWaves,
+              eveningSummary
             );
           }
         } else if (simDt > 0) {
@@ -2837,6 +2841,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           if (wantsAction && (player.isNearStation || player.isNearBoard)) {
             executeStationProduction();
+          }
+          if (keysJustPressed.has('KeyQ')) {
+            const n = mood.promiseLastShot(moodBook, gameClock);
+            player.stationFeedbackText = n > 0 ? `🤝 זה למגנט! הבטחת ל-${n} ${n === 1 ? 'אורח' : 'אורחים'} — עכשיו לעמוד בזה` : '🤝 מבטיחים מגנט רק מיד אחרי צילום 📸';
+            player.stationFeedbackTimer = 2.4;
+            if (n > 0) sound.playComboChime(3);
           }
 
           if (
@@ -3010,14 +3020,12 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           }
 
           // Update VIP Event Countdown & Check if Photographer Missed the Active Event!
-          let justMissedVipEvent = false;
           if (vipEvent && vipEvent.remainingSec > 0) {
             vipEvent = {
               ...vipEvent,
               remainingSec: Math.max(0, vipEvent.remainingSec - simDt),
             };
             if (vipEvent.remainingSec === 0) {
-              justMissedVipEvent = true;
               const missedGuest = guests[vipEventSeq % Math.max(1, guests.length)];
               if (missedGuest) {
                 missedGuest.speechBubbleText = '😞 פספסת!';
@@ -3045,28 +3053,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           );
           magnetDeliveryTracker = deliveryStep.nextState;
 
-          if (deliveryStep.justBecameLate && guests.length > 0) {
-            const impatientGuest = guests[(wave + pendingMagnetsInPipeline) % guests.length];
-            if (impatientGuest) {
-              impatientGuest.speechBubbleText = '⏳ איפה המגנט?';
-              impatientGuest.wantsPhotoTimer = 1.5;
-            }
+          for (const id of mood.tickMood(moodBook, gameClock)) {
+            const g = guests.find((o) => o.id === id);
+            if (!g) continue;
+            g.speechBubbleText = '⏳ איפה המגנט?';
+            g.wantsPhotoTimer = 1.6;
+            addFrameLabel('−❤', g.x, g.y, '#f87171', '');
           }
-
-          // Update Guest Joy (partyJoy) based on Right Event Photography + On-Time Magnet Delivery!
-          const joyTick = computePartyJoyTick({
-            currentJoy: player.partyJoy,
-            dt: simDt,
-            isMagnetDeliveryLate: magnetDeliveryTracker.isLate,
-            justBecameLate: deliveryStep.justBecameLate,
-            justMissedVipEvent,
-          });
-          player.partyJoy = joyTick.nextJoy;
-          if (joyTick.joyPenaltyReasonHe) {
-            player.stationFeedbackText = joyTick.joyPenaltyReasonHe;
-            player.stationFeedbackTimer = 3.2;
-            sound.playDanceBump();
-          }
+          player.partyJoy = mood.joyPercent(moodBook);
 
           // Update Roaming Catering Waiters & Check Tray Bump
           for (let wIdx = 0; wIdx < waiters.length; wIdx++) {
@@ -3375,7 +3369,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
                 const frame = scoreFrame(subjects);
                 if (frame.score !== 0 || frame.reputation > 0) {
-                  applyScoreDelta(frame.score);
                   reputation += frame.reputation;
                   const special = frame.tags.some((t) => t !== 'empty');
                   const labelX = player.x + dirWX * 60;
@@ -3388,9 +3381,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                       : frame.tags.includes('couple_pair')
                       ? '#f472b6'
                       : '#e2e8f0';
-                  addFrameLabel(`${frame.score >= 0 ? '+' : ''}${frame.score}`, labelX, labelY, color, frame.labelHe);
+                  addFrameLabel('📸', labelX, labelY, color, frame.labelHe);
                   if (special && frame.labelHe) {
-                    player.stationFeedbackText = `📸 ${frame.labelHe} (${frame.score >= 0 ? '+' : ''}${frame.score})`;
+                    player.stationFeedbackText = `📸 ${frame.labelHe}`;
                     player.stationFeedbackTimer = 2.2;
                   }
                   if (frame.tags.includes('dj_combo') || frame.tags.includes('bride_groom')) {
@@ -4086,6 +4079,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 if (player.photosInCamera < maxCapNow) {
                   player.photosInCamera++;
                   magnetLedger.push(guest.id, gameClock);
+                  mood.onShot(moodBook, [guest.id], gameClock, eventPhase === 'arrival' ? 'arrival' : 'dancing');
                 }
 
                 // Personality reactions (attention seeker satisfied / magnet tracker's countdown starts)
@@ -4105,9 +4099,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                     guest.arrival.photographed = true;
                     arrival.stats.photographed++;
                     if (q === 'gold') arrival.stats.gold++;
-                    const bonus = q === 'gold' ? ARRIVAL.goldBonus : ARRIVAL.okBonus;
-                    applyScoreDelta(bonus);
-                    addFrameLabel(`+${bonus}`, guest.x, guest.y, q === 'gold' ? '#fbbf24' : '#e2e8f0', q === 'gold' ? '✨ תמונת זהב בכניסה!' : '📸 תמונת כניסה');
+                    if (q === 'gold') mood.onArrivalGold(moodBook, guest.id);
+                    addFrameLabel(q === 'gold' ? '+❤' : '📸', guest.x, guest.y, q === 'gold' ? '#fbbf24' : '#e2e8f0', q === 'gold' ? '✨ תמונת זהב בכניסה!' : '📸 תמונת כניסה');
                     guest.celebrateTimer = 1.2;
                   }
                 }
@@ -4126,16 +4119,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 comboTimer = 4.2;
                 sound.playComboChime(combo);
 
-                // Subject rewards come from the whole-frame score at the shutter click;
-                // per-capture extras: magnet-frame preference + reviving a seated guest + combo
-                const gained =
-                  scoreCaptureExtras({
-                    kind: guest.guestType ?? 'regular',
-                    frameMatched: frameEval.matched,
-                    revived: revivedToDancefloor,
-                  }) + Math.min(combo, 12) * 10;
-                score += gained;
-                bestScore = Math.max(bestScore, score);
 
                 // Check if shot counts toward active VIP Moment ("צילום האירוע הנכון")!
                 const isRightEventShot = Boolean(
@@ -4233,29 +4216,13 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
-          // Check Wave Magnet Quota Completion or DJ Track End
-          const cfg = getWaveConfig(wave);
-          const quotaMet = magnetsPrintedThisWave >= cfg.targetMagnets;
-          const isStickingAnimActive =
-            pendingBoardSticks > 0 || flyingMagnets.some((m) => m.active);
-
-          if (eventPhase !== 'dancing') {
-            // the arrival phase ends on its own (updateArrivalPhase)
-          } else if (quotaMet && !pendingOutcome && !isStickingAnimActive) {
-            // Stage Complete! Advancing or Wedding Victory!
-            if (wave >= 4) {
-              pendingOutcome = 'victory';
-              endBeatTimer = 0.8;
-            } else {
-              wave++;
-              player.partyJoy = 100;
-              sound.playFanfare(true);
-              spawnParticles(0, 0, 50, '#f59e0b', 240);
-              spawnWave(wave);
-            }
-          } else if (trackTimeRemaining <= 0 && !pendingOutcome && !isStickingAnimActive) {
-            pendingOutcome = quotaMet ? 'victory' : 'defeat';
-            endBeatTimer = 0.6;
+          // End of the evening: the dance set is over -> closing penalties, then stars (guestMood.ts)
+          const isStickingAnimActive = pendingBoardSticks > 0 || flyingMagnets.some((m) => m.active);
+          if (eventPhase === 'dancing' && trackTimeRemaining <= 0 && !pendingOutcome && !isStickingAnimActive) {
+            eveningSummary = mood.settleEvening(moodBook);
+            player.partyJoy = mood.joyPercent(moodBook);
+            pendingOutcome = eveningSummary.stars >= 1 ? 'victory' : 'defeat';
+            endBeatTimer = 0.8;
           }
         }
 
@@ -5946,6 +5913,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.restore();
       }
 
+      drawGuestHearts(ctx, [...guests, ...vipCouple, ...arrival.guests.filter((g) => g.arrival?.state !== 'waiting')], moodBook, originX, originY, player, gameClock);
+
       // ARRIVAL: pose timer ring over posing guests (glows gold in the sweet spot)
       if (eventPhase === 'arrival') {
         ctx.save();
@@ -6340,8 +6309,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           bestScore,
           combo,
           wave,
-          magnetsPrinted: magnetsPrintedThisWave,
-          targetMagnets: waveCfg.targetMagnets,
+          magnetsPrinted: mood.openMagnets(moodBook).open,
+          targetMagnets: mood.openMagnets(moodBook).promised,
+          canPromise: mood.canPromise(moodBook, gameClock),
           trackTimeSec: Math.round(trackTimeRemaining),
           stageTitleHe: waveCfg.stageTitleHe,
           photosInCamera: player.photosInCamera,
