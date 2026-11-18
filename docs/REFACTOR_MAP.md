@@ -65,7 +65,7 @@
 | 3 | **אורחים** (הכי גדול) | 1611–1837, 2338–2816, 3673–4154, 5777–6031 | `src/game/guestSpawn.ts`, `src/game/guestAi.ts`, `src/render/guests.ts` | אורחים חדשים מ-PixelLab | ⬜ |
 | 4 | עמדת מגנטים + לוח | 1141–1610, 4840–5467 | `src/game/workstationFlow.ts`, `src/render/workstation.ts`, `src/render/magnetBoard.ts` | איזון | ⬜ |
 | 5 | צילום + הבזק + ניקוד | 3334–3581, 6031–6074, 6135–6164 | `src/game/shooting.ts` | דירוג תמונה S/A/B | ⬜ |
-| 6 | קבלת פנים (שלב) | 1838–2035, 6103–6135, 6430–6464 | `src/game/arrivalPhase.ts`, `src/render/phaseOverlay.ts` | כשנוגעים בשלבים | ⬜ |
+| 6 | קבלת פנים (שלב) | 1838–2035, 6103–6135, 6430–6464 | `src/game/arrivalPhase.ts`, `src/render/phaseOverlay.ts` | כשנוגעים בשלבים | 🟡 הלוגיקה הועברה ל-`arrivalPhase.ts` (18.11); הציור (טבעות פוזה, פס התקדמות) עדיין בקובץ הראשי |
 | 7 | שחקן + מצלמה + קלט | 600–700, 2891–3163, 5521–5777 | `src/engine/input.ts`, `src/game/playerMove.ts`, `src/render/player.ts` | מצב אורך / PWA | ⬜ |
 | 8 | אפקטים | 700–1010, 4373–4447, 6164–6430 | `src/render/effects.ts` | כשנוגעים באפקטים | ⬜ |
 | 9 | טיפוסים וקבועים | 214–460 | `src/game/actors.ts`, `src/game/hallLayout.ts` | עם הפירוק הראשון שצריך אותם | ⬜ |
