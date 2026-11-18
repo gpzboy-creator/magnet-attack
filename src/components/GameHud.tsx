@@ -51,6 +51,8 @@ export interface HudSnapshot {
   /** Camera is lying on the workstation desk (card in the laptop) → can't shoot */
   cameraOnDesk?: boolean;
   maxPhotosInCamera?: number;
+  /** Soft cap: shooting continues past maxPhotosInCamera up to this, with a slower copy (cameraCard.ts). */
+  cardHardMax?: number;
   uncutSheetsAtStation?: number;
   cutMagnetsInHand?: number;
   activeWorkflowObjective?:
@@ -197,6 +199,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   const formattedTime = `${Math.floor(trackTimeSec / 60)}:${String(trackTimeSec % 60).padStart(2, '0')}`;
   const photosInCamera = hud.photosInCamera ?? 0;
   const maxPhotosInCamera = hud.maxPhotosInCamera ?? 12;
+  const cardHardMax = hud.cardHardMax ?? maxPhotosInCamera * 2;
   const uncutSheetsAtStation = hud.uncutSheetsAtStation ?? 0;
   const photosOnComputer = hud.photosOnComputer ?? 0;
   const photosTransferring = hud.photosTransferring ?? 0;
@@ -321,8 +324,14 @@ export const GameHud: React.FC<GameHudProps> = ({
     <div data-testid="hud-pipeline-pill" className="mhud-row" style={{ flexWrap: 'wrap', gap: '0.25em' }}>
       {(photosInCamera > 0 || cameraOnDesk) && (
         <span
-          className={`mhud-pill ${photosInCamera >= maxPhotosInCamera ? 'warn pulse' : ''}`}
-          title={cameraOnDesk ? 'המצלמה על שולחן העבודה' : 'תמונות במצלמה'}
+          className={`mhud-pill ${photosInCamera >= cardHardMax ? 'warn pulse' : photosInCamera > maxPhotosInCamera ? 'warn' : ''}`}
+          title={
+            cameraOnDesk
+              ? 'המצלמה על שולחן העבודה'
+              : photosInCamera > maxPhotosInCamera
+              ? `כרטיס עמוס: כל תמונה מעל ${maxPhotosInCamera} מאטה את ההעברה למחשב (מקסימום ${cardHardMax})`
+              : 'תמונות במצלמה'
+          }
         >
           <span style={{ opacity: cameraOnDesk ? 0.45 : 1 }}>📸</span>
           <span className="num" data-testid="hud-photos-in-camera">

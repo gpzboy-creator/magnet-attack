@@ -15,7 +15,6 @@ import {
   VipEventState,
   WaiterActorState,
   angleToIsoDirection,
-  calculateBatchPrintBonus,
   CROWD_MOVE_INTERVAL_SEC,
   FloorObstacle,
   GUEST_ACTIVITY_COOLDOWN_SEC,
@@ -134,6 +133,7 @@ import {
 import { FrameSubject, MagnetLedger, scoreFrame } from '../game/photoScoring';
 import { createArrival } from '../game/arrivalPhase';
 import * as mood from '../game/guestMood';
+import { cardCopySec, cardLimits } from '../game/cameraCard';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
   ARRIVAL,
@@ -1195,18 +1195,19 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const batch = player.photosInCamera;
       const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
       const job = calculateCardTransferTiming(batch, speedMult);
+      const copySec = cardCopySec(job.totalDurationSec, batch, cardLimits(upgradeLevels.pro_sdcard).capacity, speedMult);
 
       player.cameraOnDesk = true;
       player.photosInCamera = 0; // card is in the laptop now
       player.transferBatch = batch;
-      player.transferAnimDuration = job.totalDurationSec;
-      player.transferAnimTimer = job.totalDurationSec;
-      player.stationActionTimer = Math.max(player.stationActionTimer, job.totalDurationSec);
+      player.transferAnimDuration = copySec;
+      player.transferAnimTimer = copySec;
+      player.stationActionTimer = Math.max(player.stationActionTimer, copySec);
       sound.playDanceBump();
       spawnParticles(WORKSTATION_POS.x - 30, WORKSTATION_POS.y + 6, 10, '#4ade80', 90, 40);
 
-      player.stationFeedbackText = `💾 המצלמה על השולחן והכרטיס במחשב — מעביר ${batch} תמונות (${job.totalDurationSec.toFixed(1)} שנ'). אי אפשר לצלם עכשיו!`;
-      player.stationFeedbackTimer = Math.max(2.6, job.totalDurationSec + 0.8);
+      player.stationFeedbackText = `💾 המצלמה על השולחן והכרטיס במחשב — מעביר ${batch} תמונות (${copySec.toFixed(1)} שנ'${copySec > job.totalDurationSec ? ' · כרטיס עמוס = איטי' : ''}). אי אפשר לצלם עכשיו!`;
+      player.stationFeedbackTimer = Math.max(2.6, copySec + 0.8);
       hudEmitTimer = 1;
     };
 
@@ -1251,8 +1252,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         return;
       }
       const batch = plan.photos;
-      const maxCap = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
-      const batchBonus = calculateBatchPrintBonus(batch, maxCap);
       const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
       const job = calculateWorkstationJobTiming(batch, speedMult);
 
@@ -1263,9 +1262,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.printerAnimTimer = job.totalDurationSec;
       player.printerTotalSheets = job.sheetCount;
       player.stationActionTimer = job.totalDurationSec;
-      score += Math.round(batch * 60 * batchBonus.multiplier);
-      bestScore = Math.max(bestScore, score);
-
       const sheetIntervalMs = Math.max(120, Math.round(job.secondsPerSheet * 1000));
       for (let s = 0; s < job.sheetCount; s++) {
         scheduleTimeout(() => {
@@ -1274,8 +1270,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         }, s * sheetIntervalMs);
       }
 
-      const bonusTag = batchBonus.bonusLabelHe ? ` · ${batchBonus.bonusLabelHe}` : '';
-      player.stationFeedbackText = `🖨️ מדפיס ${job.sheetCount} דפי מגנט (${batch} תמונות · ${job.totalDurationSec.toFixed(1)} שנ')${bonusTag}! לחץ [E] לחיתוך! ✂️`;
+      player.stationFeedbackText = `🖨️ מדפיס ${job.sheetCount} דפי מגנט (${batch} תמונות · ${job.totalDurationSec.toFixed(1)} שנ')! לחץ [E] לחיתוך! ✂️`;
       if (plan.limitedBy) {
         player.stationFeedbackText += ` · ${player.photosOnComputer} תמונות נשארו במחשב — ${printBlockMessageHe(plan.limitedBy)}`;
       } else if (supplies.jammed) {
@@ -3263,11 +3258,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 : '📷 המצלמה נשארה על שולחן העבודה! חזור לעמדה לקחת אותה';
             player.stationFeedbackTimer = 2.2;
           } else if (wantsShoot && player.shootCooldown <= 0 && cameraReady) {
-            const maxCap = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
-            if (player.photosInCamera >= maxCap) {
+            const card = cardLimits(upgradeLevels.pro_sdcard);
+            if (player.photosInCamera >= card.hardMax) {
               player.shootCooldown = 0.35;
               sound.playDanceBump();
-              player.stationFeedbackText = `💾 כרטיס הזיכרון מלא (${maxCap}/${maxCap})! רוץ לעמדה בפינה להעביר למחשב ולהדפיס בבונוס כפול x2! 💾`;
+              player.stationFeedbackText = `💾 כרטיס הזיכרון מלא לגמרי (${card.hardMax})! רוץ לעמדה בפינה להעביר למחשב 💾`;
               player.stationFeedbackTimer = 2.4;
             } else {
               const aimWorld = isoToWorld(
@@ -4007,7 +4002,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           // ====================================================================
           // UPDATE FLASH SHOTS & PHOTOGRAPH GUESTS (WITH VIP, FRAME PREFERENCES & TABLE REVIVAL)
           // ====================================================================
-          const maxCapNow = getMaxCameraCapacity(upgradeLevels.pro_sdcard);
+          const maxCapNow = cardLimits(upgradeLevels.pro_sdcard).hardMax;
           const arrivingVisible = arrival.guests.filter((g) => g.arrival && g.arrival.state !== 'waiting');
           const photographable = [
             ...guests,
@@ -6320,6 +6315,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           transferRemainingSec: player.transferAnimTimer,
           cameraOnDesk: player.cameraOnDesk,
           maxPhotosInCamera: getMaxCameraCapacity(upgradeLevels.pro_sdcard),
+          cardHardMax: cardLimits(upgradeLevels.pro_sdcard).hardMax,
           uncutSheetsAtStation: player.uncutSheetsAtStation,
           cutMagnetsInHand: player.cutMagnetsInHand,
           activeWorkflowObjective: activeObjective,
