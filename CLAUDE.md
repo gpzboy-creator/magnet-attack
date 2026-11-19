@@ -31,7 +31,7 @@ React + TypeScript + Vite, ציור ישיר על **Canvas2D** — אין מנו
 | `public/assets/aistudio/`, `public/assets/characters/` | ספרייטים (PixelLab ואחרים) | **שם קובץ חדש בכל שינוי תוכן** (קאש של GitHub Pages) |
 | `tools/*.py` | עיבוד ספרייטים (חיתוך, מראה, גיליונות) | כל נכס שעבר עיבוד — עם הסקריפט שלו |
 
-מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts`, `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה), `venueRooms.ts` (חדר חתן וכלה + שירותים מדרום ללובי), `coupleSuite.ts` (הזוג בחדר הכלה ויציאה לאולם).
+מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts`, `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה), `venueRooms.ts` (חדר חתן וכלה + שירותים מדרום ללובי), `coupleSuite.ts` (הזוג בחדר הכלה ויציאה לאולם), `ceremonyPhase.ts` (טקס החופה: הסתדרות בשביל, כניסת החתן ואז הכלה עם ההורים, סגירת השביל, כיסאות ומשולש).
 
 ## פקודות
 
@@ -49,7 +49,7 @@ npm run build          # vite build → dist/
 
 **איזו גרסה על המסך:** בפינה השמאלית התחתונה של מסך הפתיחה — `v <commit> · <תאריך>`. אם זה לא ה-commit האחרון, זה קאש: Ctrl+Shift+R.
 
-**פרמטרי דיבאג** (בכתובת): `?spawn=parking|dj|x,y` (מיקום התחלה; גם חושף `window.__player`), `?phase=dancing` (דילוג לריקודים), `?djthrow=1` (זריקת מפיות אחרי 4 שניות), `?evening=8` (סט הריקודים מתקצר ל-8 שניות — להגיע מהר למסך הכוכבים).
+**פרמטרי דיבאג** (בכתובת): `?spawn=parking|dj|x,y` (מיקום התחלה; גם חושף `window.__player`), `?phase=dancing` (דילוג לריקודים), `?phase=ceremony` (ישר לחופה), `?djthrow=1` (זריקת מפיות אחרי 4 שניות), `?evening=8` (סט הריקודים מתקצר ל-8 שניות — להגיע מהר למסך הכוכבים).
 
 ## שיטת העבודה — משימה אחת לכל שיחה
 

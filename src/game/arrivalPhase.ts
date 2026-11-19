@@ -2,7 +2,8 @@
  * Arrival phase (reception) — moved out of IsoArenaCanvas.tsx (REFACTOR_MAP area 6).
  * Guests walk in from the courtyard, queue at the flower photo wall and pose, then mingle in the
  * reception garden (yardMingle.ts: sides, friend groups, buffet queues, asking the photographer).
- * When everyone has posed and mingled a while, they walk through the hall door to their seat.
+ * When everyone has posed and mingled a while, the chuppah is called (ceremonyPhase.ts); after the
+ * ceremony they walk through the hall door to their seat.
  * The canvas owns phase timers and drawing; this module owns the arriving guests and the stats.
  */
 
@@ -22,6 +23,8 @@ import {
   PHOTO_SPOT,
   RECEPTION_BAR,
 } from './venueOutside';
+import { createCeremony, type CeremonyStage } from './ceremonyPhase';
+import { idleCoupleInSuite } from './coupleSuite';
 import {
   MINGLE,
   assignSides,
@@ -102,6 +105,8 @@ export interface ArrivalHost {
   onMissed(g: WeddingGuestActor, where: 'wall' | 'yard'): void;
   /** Everyone is seated (or the phase ran too long): start the dancing. */
   onAllSeated(): void;
+  /** The reception is over: the chuppah ceremony begins. */
+  onCeremony?(): void;
 }
 
 export interface ArrivalController {
@@ -117,6 +122,12 @@ export interface ArrivalController {
   /** Anyone still on the way just takes their seat. */
   finishAll(): void;
   update(dt: number, phaseTime: number): void;
+  /** The bride & groom: in the suite during the reception, walking to the chuppah in the ceremony. */
+  stepCouple(couple: WeddingGuestActor[], dt: number): void;
+  readonly ceremonyStage: CeremonyStage;
+  readonly ceremonyLabelHe: string;
+  /** Debug (?phase=ceremony): everyone is in the yard, the chuppah is called right away. */
+  skipToCeremony(): void;
 }
 
 export function createArrival(host: ArrivalHost): ArrivalController {
@@ -128,6 +139,9 @@ export function createArrival(host: ArrivalHost): ArrivalController {
   let queues: number[][] = BUFFET_FRONTS.map(() => []);
   let sinceAllPosed = 0;
   let calledIn = false;
+  let receptionOver = false;
+  let sinceCalledIn = 0;
+  const ceremony = createCeremony(() => callIn());
 
   function start() {
     const hall = host.takeHallGuests();
@@ -172,6 +186,8 @@ export function createArrival(host: ArrivalHost): ArrivalController {
     queues = BUFFET_FRONTS.map(() => []);
     sinceAllPosed = 0;
     calledIn = false;
+    receptionOver = false;
+    sinceCalledIn = 0;
     groupMembers.forEach((members, gi) => {
       members.forEach((id, idx) => {
         yard.set(id, {
@@ -278,16 +294,31 @@ export function createArrival(host: ArrivalHost): ArrivalController {
     }
   }
 
-  /** The ceremony is called: everyone in the yard heads for the hall door. */
+  /** The reception is over: everyone in the yard goes to the chuppah. */
+  function startCeremony() {
+    receptionOver = true;
+    const yardGuests = arrivingGuests.filter((g) => g.arrival?.state === 'mingling');
+    for (const g of yardGuests) {
+      const y = yard.get(g.id);
+      if (y) leaveQueue(g.id, y);
+      g.arrival!.state = 'ceremony';
+      g.speechBubbleText = g.id % 4 === 0 ? '🔔 חופה!' : null;
+      g.wantsPhotoTimer = 1.4;
+    }
+    ceremony.start(yardGuests, (id) => yard.get(id)?.side ?? null);
+    host.onCeremony?.();
+  }
+
+  /** After the ceremony: everyone heads for the hall door. */
   function callIn() {
     calledIn = true;
     for (const g of arrivingGuests) {
       const a = g.arrival;
-      if (!a || a.state !== 'mingling') continue;
+      if (!a || (a.state !== 'mingling' && a.state !== 'ceremony')) continue;
       const y = yard.get(g.id);
       if (y) leaveQueue(g.id, y);
       a.state = 'leaving';
-      g.speechBubbleText = g.id % 3 === 0 ? '🔔 נכנסים!' : null;
+      g.speechBubbleText = g.id % 3 === 0 ? '🎉 מזל טוב!' : null;
       g.wantsPhotoTimer = 1.4;
     }
   }
@@ -323,6 +354,7 @@ export function createArrival(host: ArrivalHost): ArrivalController {
       g.wantsPhotoTimer -= dt;
       if (g.wantsPhotoTimer <= 0) g.speechBubbleText = null;
     }
+    if (a.state === 'ceremony') return; // moved by ceremonyPhase.ts
     const walkTo = (tx: number, ty: number, speed: number) => {
       const mv = moveTowardPoint(g, { x: tx, y: ty }, speed, dt, 2);
       const step = Math.hypot(mv.x - g.x, mv.y - g.y);
@@ -376,8 +408,9 @@ export function createArrival(host: ArrivalHost): ArrivalController {
           stats.missed++;
           host.onMissed(g, 'wall');
         }
-        // after the photo wall: mingle in the garden (or go straight in once the ceremony was called)
-        a.state = calledIn ? 'leaving' : 'mingling';
+        // after the photo wall: mingle in the garden (or join the chuppah / go straight in)
+        a.state = calledIn ? 'leaving' : receptionOver ? 'ceremony' : 'mingling';
+        if (a.state === 'ceremony') ceremony.adopt(g);
       }
       return;
     }
@@ -420,16 +453,44 @@ export function createArrival(host: ArrivalHost): ArrivalController {
       }
     }
     arrivingGuests = arrivingGuests.filter((g) => g.arrival);
-    // everyone has posed → mingle a while, then the ceremony is called and they go in
+    if (receptionOver) ceremony.update(arrivingGuests.filter((g) => g.arrival?.state === 'ceremony'), dt);
+    // everyone has posed → mingle a while, then the chuppah is called (after it they go in)
     const stillComing = arrivingGuests.some((g) => g.arrival && g.arrival.state !== 'mingling' && g.arrival.state !== 'leaving');
     if (!stillComing) sinceAllPosed += dt;
-    if (!calledIn && (sinceAllPosed >= MINGLE.afterLastPoseSec || phaseTime > ARRIVAL.maxPhaseSec)) callIn();
-    if ((arrivingGuests.length === 0 && stats.total > 0) || phaseTime > ARRIVAL.maxPhaseSec + 60) {
+    if (!receptionOver && (sinceAllPosed >= MINGLE.afterLastPoseSec || phaseTime > ARRIVAL.maxPhaseSec)) startCeremony();
+    if (calledIn) sinceCalledIn += dt;
+    // dancing starts once everyone is seated and the couple is back in the suite (or after a safety wait)
+    if ((arrivingGuests.length === 0 && stats.total > 0 && ceremony.coupleHome) || sinceCalledIn > 60) {
       host.onAllSeated();
     }
   }
 
+  function skipToCeremony() {
+    for (const g of arrivingGuests) {
+      const a = g.arrival;
+      if (!a || a.state === 'leaving') continue;
+      const y = yard.get(g.id);
+      if (y) {
+        g.x = y.spot.x;
+        g.y = y.spot.y;
+      }
+      a.state = 'mingling';
+    }
+    startCeremony();
+  }
+
   return {
+    stepCouple(couple: WeddingGuestActor[], dt: number) {
+      idleCoupleInSuite(couple, dt); // places them in the suite once, ticks their timers
+      ceremony.stepCouple(couple, dt);
+    },
+    get ceremonyStage() {
+      return ceremony.stage;
+    },
+    get ceremonyLabelHe() {
+      return ceremony.labelHe;
+    },
+    skipToCeremony,
     get guests() {
       return arrivingGuests;
     },

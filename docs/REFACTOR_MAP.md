@@ -61,7 +61,7 @@
 | # | אזור | שורות היום | קובץ יעד | מתי (משימה במפת הדרכים) | סטטוס |
 |---|---|---|---|---|---|
 | 1 | סט הדיג'יי + מפיות + סאב | 4555–4675 + עדכון | `src/render/djSet.ts` | רמות דיג'יי / מפיות-בונוס | ⬜ |
-| 2 | חופה + זוג VIP + רב/הורים | 2036–2184, 4154–4373, 4757–4840 | `src/game/vipCouple.ts`, `src/render/chuppah.ts` | טקס חופה (שלב ג') | ⬜ |
+| 2 | חופה + זוג VIP + רב/הורים | 2036–2184, 4154–4373, 4757–4840 | `src/game/vipCouple.ts`, `src/render/chuppah.ts` | טקס חופה (שלב ג') | 🟡 19.11: הטקס עצמו נכתב מראש במודול חדש `src/game/ceremonyPhase.ts` (מופעל מ-`arrivalPhase.ts`); הקוד של הזוג בריקודים (`updateVipCouple`, נשיקה בחופה) עדיין בקובץ הראשי |
 | 3 | **אורחים** (הכי גדול) | 1611–1837, 2338–2816, 3673–4154, 5777–6031 | `src/game/guestSpawn.ts`, `src/game/guestAi.ts`, `src/render/guests.ts` | אורחים חדשים מ-PixelLab | ⬜ |
 | 4 | עמדת מגנטים + לוח | 1141–1610, 4840–5467 | `src/game/workstationFlow.ts`, `src/render/workstation.ts`, `src/render/magnetBoard.ts` | איזון | ⬜ |
 | 5 | צילום + הבזק + ניקוד | 3334–3581, 6031–6074, 6135–6164 | `src/game/shooting.ts` | דירוג תמונה S/A/B | ⬜ |

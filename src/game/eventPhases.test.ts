@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ARRIVAL, arrivalSchedule, nextPhase, rateArrivalShot } from './eventPhases.ts';
 
-test('phases run arrival → dancing → end', () => {
-  assert.equal(nextPhase('arrival'), 'dancing');
+test('phases run arrival → ceremony → dancing → end', () => {
+  assert.equal(nextPhase('arrival'), 'ceremony');
+  assert.equal(nextPhase('ceremony'), 'dancing');
   assert.equal(nextPhase('dancing'), null);
 });
 

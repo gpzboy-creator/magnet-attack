@@ -14,6 +14,7 @@
  */
 import { CHUPPAH_POS, worldToIso } from './rules.ts';
 import { BRIDGE_FOOT, POOL_OBSTACLES } from './chuppahIsland.ts';
+import { CEREMONY } from './ceremonyPhase.ts';
 import { PROP_SPRITES, propFootprint } from './venueProps.ts';
 import { ROOMS_WALKABLE, ROOM_OBSTACLES, drawRoomsGround, getRoomDrawables } from './venueRooms.ts';
 
@@ -65,14 +66,13 @@ export const PARKING_AISLE: Rect = { minX: PARKING.minX, maxX: PARKING.maxX, min
  * rows of white chairs on both sides face the chuppah.
  */
 export const CEREMONY_AISLE: Rect = { minX: 940, maxX: BRIDGE_FOOT.x, minY: CHUPPAH_POS.y - 29, maxY: CHUPPAH_POS.y + 29 };
-export const CEREMONY_CHAIR_ROWS: Array<{ x: number; y0: number; y1: number }> = [0, 1, 2, 3, 4, 5].flatMap((i) => {
-  const x = 980 + i * 40;
-  return [
-    { x, y0: CEREMONY_AISLE.minY - 130, y1: CEREMONY_AISLE.minY - 22 }, // north block
-    { x, y0: CEREMONY_AISLE.maxY + 22, y1: CEREMONY_AISLE.maxY + 130 }, // south block
-  ];
-});
-export const CEREMONY_CHAIR_SPACING = 27;
+/** Four rows near the chuppah (ceremonyPhase.ts places the guests at these chairs). */
+const CHAIR_FAR = CEREMONY.chairInner + CEREMONY.chairSpacing * (CEREMONY.chairsPerSide - 1);
+export const CEREMONY_CHAIR_ROWS: Array<{ x: number; y0: number; y1: number }> = CEREMONY.rowXs.flatMap((x) => [
+  { x, y0: CHUPPAH_POS.y - CHAIR_FAR, y1: CHUPPAH_POS.y - CEREMONY.chairInner }, // north block
+  { x, y0: CHUPPAH_POS.y + CEREMONY.chairInner, y1: CHUPPAH_POS.y + CHAIR_FAR }, // south block
+]);
+export const CEREMONY_CHAIR_SPACING = CEREMONY.chairSpacing;
 
 /** Garden (south of the path). */
 export const FOUNTAIN_POS = { x: 1040, y: 620 };

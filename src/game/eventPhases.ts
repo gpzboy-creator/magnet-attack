@@ -3,12 +3,13 @@
  *
  *   arrival  — guests arrive through the courtyard into the lobby, stop at the photo wall to pose,
  *              then walk into the hall and sit down. Shoot every guest while they pose.
+ *   ceremony — the chuppah (ceremonyPhase.ts): the groom, then the bride, walk in with their parents.
  *   dancing  — the dance floor game (photograph, print, cut, stick magnets on the board).
  *
- * Planned next (project log): family & couple photo session (keepsake magnets), the chuppah ceremony.
+ * Planned next (project log): family & couple photo session (keepsake magnets).
  */
 
-export type EventPhaseId = 'arrival' | 'dancing';
+export type EventPhaseId = 'arrival' | 'ceremony' | 'dancing';
 
 export interface EventPhaseInfo {
   id: EventPhaseId;
@@ -21,6 +22,11 @@ export const EVENT_PHASES: EventPhaseInfo[] = [
     id: 'arrival',
     titleHe: '🚪 קבלת פנים',
     goalHe: 'האורחים מגיעים! צלם כל אורח בפוזה ליד קיר הפרחים, ואחר כך את מי שמבקש תמונה בחצר',
+  },
+  {
+    id: 'ceremony',
+    titleHe: '💍 חופה',
+    goalHe: 'החתן נכנס עם ההורים, אחריו הכלה עם ההורים. צלם את הכניסות ואת הטקס!',
   },
   {
     id: 'dancing',
