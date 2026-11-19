@@ -3,6 +3,14 @@
  * Pure logic, tested in playerMovement.test.ts.
  */
 
+/**
+ * The hall floor is a square (drawn ±440, walls on the back two sides); the whole of it is walkable
+ * up to a body's width from the edge. Before 19.11 only a 390 circle was, so the floor near the
+ * edges and corners looked open but was blocked ("invisible walls").
+ */
+export const HALL_FLOOR_HALF = 428;
+export const insideHallFloor = (x: number, y: number) => Math.abs(x) <= HALL_FLOOR_HALF && Math.abs(y) <= HALL_FLOOR_HALF;
+
 export interface Pt {
   x: number;
   y: number;

@@ -130,7 +130,7 @@ import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { pushWorkstationChair } from '../render/workstationChair';
 import { pushHallTables } from '../render/hallTables';
 import { pushReceptionBar } from '../render/receptionBar';
-import { constrainToWalkable, settlePosition } from '../game/playerMovement';
+import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
@@ -979,7 +979,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       activeTimeouts = [];
     };
 
-    const ARENA_RADIUS = 390;
     let playerLastSafe = { x: 0, y: 0 }; // last walkable spot (playerMovement.ts falls back to it)
     const player = {
       x: 10,
@@ -2757,7 +2756,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.y += player.vy * simDt;
 
             // Stay on walkable ground: slide along walls, step toward doorways, never teleport (playerMovement.ts)
-            const walkable = (x: number, y: number) => Math.hypot(x, y) <= ARENA_RADIUS || isWalkableOutside(x, y);
+            const walkable = (x: number, y: number) => insideHallFloor(x, y) || isWalkableOutside(x, y);
             const walked = constrainToWalkable({ x: prevX, y: prevY }, { x: player.x, y: player.y }, walkable, doorwaySlideTarget, moveSpeed * simDt);
             const pushed = walked ? resolveFloorObstacles(walked, PLAYER_BODY_RADIUS, FLOOR_OBSTACLES) : null;
             const settled = settlePosition(walked, pushed, playerLastSafe, walkable);
