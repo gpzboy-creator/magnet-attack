@@ -27,8 +27,12 @@ export const HALL_LAYOUT = {
     { dist: 240, across: [-195, -65, 65, 195] },
     { dist: 322, across: [-130, 0, 130] },
   ],
-  /** The bar across the hall (stage 3): centre distance from the dance floor centre, length. */
-  bar: { dist: 182, length: 170, depth: 16 },
+  /**
+   * The bar across the hall (stage 3, PixelLab hall-bar.png): centre distance from the dance floor
+   * centre, length and depth — the sprite's measured footprint at 170 long (≈ 3.7 m × 0.63 m).
+   * Centre at 183 (not 182) so the 29-deep counter clears the dance floor edge.
+   */
+  bar: { dist: 183, length: 170, depth: 29 },
 } as const;
 
 const at = (dist: number, across: number): Pt => ({

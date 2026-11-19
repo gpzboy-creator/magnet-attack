@@ -1,28 +1,12 @@
 /**
  * Event-hall art (modern ballroom): dark slate floor with gobo projections, living green wall,
  * beige/dark slat panels with gold-green LED fiber screens, ceiling trusses with moving heads,
- * long white banquet tables with ghost chairs, flower centerpieces & crystal candelabras,
- * a black island bar with a backlit bottle tower, bartenders, and an uplit-tree lounge.
+ * bartenders (the bar itself is a PixelLab sprite: src/render/hallBar.ts), and an uplit-tree lounge.
  *
  * All drawing is procedural Canvas2D in the game's 2:1 isometric projection (worldToIso).
  */
 
 import { worldToIso } from './rules.ts';
-
-export type IsoBoxFn = (
-  originX: number,
-  originY: number,
-  wx: number,
-  wy: number,
-  w: number,
-  d: number,
-  h: number,
-  topColor: string,
-  leftColor: string,
-  rightColor: string,
-  strokeColor?: string,
-  zBase?: number
-) => void;
 
 // ---------------------------------------------------------------------------
 // Layout constants (world units) shared with gameplay
@@ -30,44 +14,6 @@ export type IsoBoxFn = (
 
 export const HALL_WALL_HEIGHT = 205;
 export const DANCE_FLOOR_RADIUS = 168;
-
-/** Square island bar in the middle-right of the hall. */
-export const ISLAND_BAR = {
-  cx: 248,
-  cy: -98,
-  half: 46, // outer half-size
-  counter: 14, // counter depth
-  height: 30,
-  towerHalf: 15,
-  towerHeight: 74,
-} as const;
-
-/** Spots just outside the counter where guests stand / lean at the bar. */
-export const BAR_GUEST_SPOTS: Array<{ x: number; y: number }> = [
-  { x: ISLAND_BAR.cx - ISLAND_BAR.half - 11, y: ISLAND_BAR.cy - 28 },
-  { x: ISLAND_BAR.cx - ISLAND_BAR.half - 11, y: ISLAND_BAR.cy },
-  { x: ISLAND_BAR.cx - ISLAND_BAR.half - 11, y: ISLAND_BAR.cy + 28 },
-  { x: ISLAND_BAR.cx - 28, y: ISLAND_BAR.cy + ISLAND_BAR.half + 11 },
-  { x: ISLAND_BAR.cx, y: ISLAND_BAR.cy + ISLAND_BAR.half + 11 },
-  { x: ISLAND_BAR.cx + 28, y: ISLAND_BAR.cy + ISLAND_BAR.half + 11 },
-];
-
-/** Where waiters pick up drinks (outside two corners of the island). */
-export const BAR_PICKUP_SPOTS: Array<{ x: number; y: number }> = [
-  { x: ISLAND_BAR.cx - ISLAND_BAR.half - 12, y: ISLAND_BAR.cy - ISLAND_BAR.half + 4 },
-  { x: ISLAND_BAR.cx + ISLAND_BAR.half - 4, y: ISLAND_BAR.cy + ISLAND_BAR.half + 12 },
-];
-
-/** Stations inside the island ring where bartenders work. */
-export const BARTENDER_STATIONS: Array<{ x: number; y: number }> = [
-  { x: ISLAND_BAR.cx - 24, y: ISLAND_BAR.cy + 22 },
-  { x: ISLAND_BAR.cx, y: ISLAND_BAR.cy + 25 },
-  { x: ISLAND_BAR.cx + 24, y: ISLAND_BAR.cy + 22 },
-  { x: ISLAND_BAR.cx + 25, y: ISLAND_BAR.cy },
-  { x: ISLAND_BAR.cx - 25, y: ISLAND_BAR.cy },
-  { x: ISLAND_BAR.cx - 22, y: ISLAND_BAR.cy - 24 },
-  { x: ISLAND_BAR.cx + 22, y: ISLAND_BAR.cy - 24 },
-];
 
 /** Uplit tree + velvet lounge (replaces the old olive tree corner). */
 export const LOUNGE = { treeX: -250, treeY: -240, sofaX: -205, sofaY: -205 } as const;
@@ -515,165 +461,6 @@ export function drawHallCeiling(ctx: CanvasRenderingContext2D, originX: number, 
 }
 
 // ---------------------------------------------------------------------------
-// 4. LONG BANQUET TABLE + GHOST CHAIR
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// 5. ISLAND BAR (counter split into short pieces for correct depth sorting)
-// ---------------------------------------------------------------------------
-
-export interface BarPiece {
-  wx: number;
-  wy: number;
-  w: number;
-  d: number;
-  /** Outer faces get the warm under-lip LED strip. */
-  front: boolean;
-}
-
-/** Counter ring split into ~23-unit pieces so bartenders/guests sort correctly around it. */
-export function getIslandBarPieces(): BarPiece[] {
-  const { cx, cy, half, counter } = ISLAND_BAR;
-  const pieces: BarPiece[] = [];
-  const x0 = cx - half;
-  const y0 = cy - half;
-  const size = half * 2;
-  const n = 4;
-  const step = size / n;
-  for (let k = 0; k < n; k++) {
-    // North (back) and South (front) runs
-    pieces.push({ wx: x0 + k * step, wy: y0, w: step, d: counter, front: false });
-    pieces.push({ wx: x0 + k * step, wy: y0 + size - counter, w: step, d: counter, front: true });
-  }
-  for (let k = 0; k < n; k++) {
-    const yy = y0 + counter + k * ((size - 2 * counter) / n);
-    const len = (size - 2 * counter) / n;
-    // West (back) and East (front) runs between the corners
-    pieces.push({ wx: x0, wy: yy, w: counter, d: len, front: false });
-    pieces.push({ wx: x0 + size - counter, wy: yy, w: counter, d: len, front: true });
-  }
-  return pieces;
-}
-
-export function drawIslandBarPiece(
-  ctx: CanvasRenderingContext2D,
-  originX: number,
-  originY: number,
-  piece: BarPiece,
-  drawIsoBox: IsoBoxFn,
-  t: number
-) {
-  const H = ISLAND_BAR.height;
-  drawIsoBox(originX, originY, piece.wx, piece.wy, piece.w, piece.d, H, '#2b2b31', '#0d0d10', '#121216', 'rgba(0, 0, 0, 0)');
-  // Glossy black top edge highlight
-  const a = iso(originX, originY, piece.wx, piece.wy + piece.d, H);
-  const b = iso(originX, originY, piece.wx + piece.w, piece.wy + piece.d, H);
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(a.x, a.y);
-  ctx.lineTo(b.x, b.y);
-  ctx.stroke();
-  if (piece.front) {
-    // Warm LED strip under the counter lip
-    const glow = 0.55 + 0.15 * Math.sin(t * 2 + piece.wx * 0.1);
-    ctx.strokeStyle = `rgba(253, 230, 138, ${glow})`;
-    ctx.lineWidth = 1.2;
-    const l0 = iso(originX, originY, piece.wx, piece.wy + piece.d, H - 3);
-    const l1 = iso(originX, originY, piece.wx + piece.w, piece.wy + piece.d, H - 3);
-    const r0 = iso(originX, originY, piece.wx + piece.w, piece.wy, H - 3);
-    ctx.beginPath();
-    ctx.moveTo(l0.x, l0.y);
-    ctx.lineTo(l1.x, l1.y);
-    ctx.lineTo(r0.x, r0.y);
-    ctx.stroke();
-  }
-  // A few glasses / bottles on the counter top
-  if (hash(piece.wx * 1.7 + piece.wy * 0.3) < 0.3) {
-    const g = iso(originX, originY, piece.wx + piece.w / 2, piece.wy + piece.d / 2, H);
-    ctx.fillStyle = hash(piece.wx) < 0.5 ? 'rgba(254, 240, 138, 0.8)' : 'rgba(244, 114, 182, 0.75)';
-    ctx.fillRect(g.x - 1.5, g.y - 5, 3, 4);
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.strokeRect(g.x - 1.5, g.y - 5, 3, 4);
-  }
-}
-
-const BOTTLE_COLORS = ['#b45309', '#d97706', '#15803d', '#e5e7eb', '#7f1d1d', '#1d4ed8', '#a16207', '#f8fafc', '#0e7490'];
-
-/** Backlit bottle-shelf tower in the middle of the island. */
-export function drawBarShelfTower(
-  ctx: CanvasRenderingContext2D,
-  originX: number,
-  originY: number,
-  drawIsoBox: IsoBoxFn,
-  t: number
-) {
-  const { cx, cy, towerHalf: h, towerHeight: Z } = ISLAND_BAR;
-  // Warm floor wash inside the bar ring
-  const fl = iso(originX, originY, cx, cy, 0);
-  const wash = ctx.createRadialGradient(fl.x, fl.y, 4, fl.x, fl.y, 70);
-  wash.addColorStop(0, 'rgba(255, 220, 160, 0.28)');
-  wash.addColorStop(1, 'rgba(255, 220, 160, 0)');
-  ctx.fillStyle = wash;
-  ctx.beginPath();
-  ctx.ellipse(fl.x, fl.y, 70, 35, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Inner back-light glow
-  const c = iso(originX, originY, cx, cy, Z * 0.5);
-  const glow = ctx.createRadialGradient(c.x, c.y, 4, c.x, c.y, 60);
-  glow.addColorStop(0, 'rgba(255, 250, 235, 0.35)');
-  glow.addColorStop(1, 'rgba(255, 250, 235, 0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(c.x, c.y, 60, 0, Math.PI * 2);
-  ctx.fill();
-
-  drawIsoBox(originX, originY, cx - h, cy - h, 2 * h, 2 * h, Z, '#0f0f12', '#f4efe3', '#e9e2d2', '#050507');
-
-  // Shelves + bottles on the two visible faces (+y face and +x face)
-  const faces: Array<(u: number, z: number) => { x: number; y: number }> = [
-    (u, z) => iso(originX, originY, cx - h + u, cy + h + 0.5, z),
-    (u, z) => iso(originX, originY, cx + h + 0.5, cy + h - u, z),
-  ];
-  faces.forEach((map, fi) => {
-    for (const shelfZ of [8, 30, 52]) {
-      const s0 = map(0, shelfZ);
-      const s1 = map(2 * h, shelfZ);
-      ctx.strokeStyle = '#111114';
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(s0.x, s0.y);
-      ctx.lineTo(s1.x, s1.y);
-      ctx.stroke();
-      for (let k = 0; k < 6; k++) {
-        const u = 3 + k * ((2 * h - 6) / 5);
-        const base = map(u, shelfZ);
-        const col = BOTTLE_COLORS[Math.floor(hash(k * 3 + shelfZ + fi * 17) * BOTTLE_COLORS.length)];
-        const tall = 11 + Math.floor(hash(k + shelfZ * 2 + fi) * 5);
-        ctx.fillStyle = col;
-        ctx.fillRect(base.x - 1.6, base.y - tall, 3.2, tall);
-        ctx.fillRect(base.x - 0.8, base.y - tall - 3, 1.6, 3);
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.fillRect(base.x - 1, base.y - tall + 1, 0.8, tall - 3);
-      }
-    }
-    // Black frame verticals
-    const v0b = map(0, 0);
-    const v0t = map(0, Z);
-    ctx.strokeStyle = '#0a0a0c';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(v0b.x, v0b.y);
-    ctx.lineTo(v0t.x, v0t.y);
-    ctx.stroke();
-  });
-  // Subtle sparkle on glass
-  const sp = iso(originX, originY, cx + h, cy + h, 40 + Math.sin(t * 3) * 10);
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.fillRect(sp.x - 0.5, sp.y - 0.5, 1.5, 1.5);
-}
-
-// ---------------------------------------------------------------------------
 // 6. BARTENDERS
 // ---------------------------------------------------------------------------
 
@@ -685,6 +472,8 @@ export interface BartenderLook {
 }
 
 export type BartenderAction = 'shake' | 'pour' | 'serve' | 'walk';
+
+const BOTTLE_COLORS = ['#b45309', '#d97706', '#15803d', '#e5e7eb', '#7f1d1d', '#1d4ed8', '#a16207', '#f8fafc', '#0e7490'];
 
 /**
  * Bartender in all-black: women in a black strapless top and black mini skirt,
@@ -1050,7 +839,7 @@ export function drawCigaretteSmoke(ctx: CanvasRenderingContext2D, hx: number, hy
 }
 
 // ---------------------------------------------------------------------------
-// 9. BARTENDER CREW (1 man : 3 women) — deterministic schedule from time
+// 9. BARTENDER CREW (1 man : 3 women, all in black)
 // ---------------------------------------------------------------------------
 
 export const BARTENDER_LOOKS: BartenderLook[] = [
@@ -1060,25 +849,3 @@ export const BARTENDER_LOOKS: BartenderLook[] = [
   { gender: 'f', hair: '#9a3412', skin: '#eab896', longHair: true },
 ];
 
-/**
- * Where bartender `index` is and what they're doing at time `t` (seconds).
- * Each bartender cycles through the inside stations: walks for 0.9s, then works
- * (shake / pour / serve) for the rest of the cycle. Stations are offset per bartender
- * so the crew spreads around the island.
- */
-export function getBartenderPose(index: number, t: number): { x: number; y: number; action: BartenderAction } {
-  const n = BARTENDER_STATIONS.length;
-  const period = 4.2 + index * 0.7;
-  const shifted = t + index * 1.3;
-  const cycle = Math.floor(shifted / period);
-  const local = shifted - cycle * period;
-  const from = BARTENDER_STATIONS[(((cycle - 1) * 3 + index * 2) % n + n) % n];
-  const to = BARTENDER_STATIONS[((cycle * 3 + index * 2) % n + n) % n];
-  const walkSec = 0.9;
-  if (local < walkSec) {
-    const k = local / walkSec;
-    return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, action: 'walk' };
-  }
-  const actions: BartenderAction[] = ['shake', 'pour', 'serve'];
-  return { x: to.x, y: to.y, action: actions[Math.floor(hash(cycle * 7.3 + index * 3.1) * 3)] };
-}

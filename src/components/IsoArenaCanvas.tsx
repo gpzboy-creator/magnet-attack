@@ -67,8 +67,6 @@ import {
   drawDjLedWall,
 } from '../game/venuePixelArt';
 import {
-  BAR_GUEST_SPOTS,
-  BAR_PICKUP_SPOTS,
   drawCigaretteSmoke,
   drawGoboProjections,
   drawHallCeiling,
@@ -119,7 +117,8 @@ import { pushWorkstationChair } from '../render/workstationChair';
 import { pushHallTables } from '../render/hallTables';
 import { pushReceptionBar } from '../render/receptionBar';
 import { LOUNGE_OBSTACLES, pushHallLounge } from '../render/hallLounge';
-import { ISLAND_BAR_OBSTACLE, islandBartenderSpots, pushIslandBar } from '../render/hallIslandBar';
+import { hallBartenderSpots, pushHallBar } from '../render/hallBar';
+import { BAR_GUEST_SPOTS, BAR_PICKUP_SPOTS, HALL_BAR_BOX } from '../game/hallBar';
 import { nextBarVisitDelay, sendGuestToBar, updateGuestAtBar } from '../game/hallBarVisits';
 import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
@@ -399,8 +398,8 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   ...BANQUET_TABLES.map((t) => ({ kind: 'circle' as const, x: t.wx, y: t.wy, r: HALL_LAYOUT.tableRadius })),
   // Uplit tree deck, velvet lounge, rattan high tables (render/hallLounge.ts)
   ...LOUNGE_OBSTACLES,
-  // Square island bar (counter ring + shelf tower)
-  ISLAND_BAR_OBSTACLE,
+  // The bar across the hall, between the dance floor and the tables (game/hallBar.ts)
+  { kind: 'box', ...HALL_BAR_BOX },
   // DJ stage (PixelLab set)
   { kind: 'box', ...DJ_SET.stage },
   // Magnet workstation desk (the chair in front of it stays reachable)
@@ -1418,7 +1417,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       vipEvent = createVipEvent(vipEventSeq++);
       nextVipCooldown = 5.0;
 
-      // Three waiters in black shirts + aprons, running drinks from the island bar to the guests
+      // Three waiters in black shirts + aprons, running drinks from the hall bar to the guests
       waiters = [0, 1, 2].map((i) => {
         const start = BAR_PICKUP_SPOTS[i % BAR_PICKUP_SPOTS.length];
         return {
@@ -3109,7 +3108,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                   }
                 }
                 const hallNow = discoBeatPhase / 2.8;
-                for (const pose of islandBartenderSpots(hallNow)) {
+                for (const pose of hallBartenderSpots(hallNow)) {
                   if (isTargetInCone(cone, pose, 8)) subjects.push({ kind: 'staff' });
                 }
                 for (const w of waiters) {
@@ -4020,8 +4019,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // 2A-1. Lounge: uplit tree, velvet sofa, rattan high tables (render/hallLounge.ts)
       pushHallLounge(drawables, ctx, originX, originY, hallT);
 
-      // 2A-2. Square black island bar + bartender crew (render/hallIslandBar.ts)
-      pushIslandBar(drawables, ctx, originX, originY, drawIsoBox, hallT);
+      // 2A-2. The hall bar (PixelLab) + two bartenders behind it (render/hallBar.ts)
+      pushHallBar(drawables, ctx, originX, originY, hallT);
 
       // 2A-3. Raised DJ Stage, Giant Animated LED Video Wall & Cyan LED Booth (photos 6 & 13)
       // DJ set (PixelLab): stage, LED wall, the DJ behind his console, the console in front of him

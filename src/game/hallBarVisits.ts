@@ -1,12 +1,12 @@
 /**
  * Guests visiting the hall bar during the dancing (moved out of IsoArenaCanvas.tsx, no behavior
- * change): every few seconds a dancer walks to a free spot at the bar for a drink — some lean on the
+ * change), now at the hall bar (hallBar.ts): every few seconds a dancer walks to a free spot at the bar for a drink — some lean on the
  * counter, smokers light up, the ones on the front side sway — then goes back to the dance floor.
  */
 
 import { angleToIsoDirection, moveTowardPoint, worldToIso } from './rules.ts';
 import type { IsoDirection } from './spriteExtractor.ts';
-import { BAR_GUEST_SPOTS, ISLAND_BAR } from './hallPixelArt.ts';
+import { BAR_GUEST_SPOTS, barFacePoint } from './hallBar.ts';
 
 /** The guest fields the bar visit reads and writes (a slice of WeddingGuestActor). */
 export interface BarGoer {
@@ -86,11 +86,12 @@ export function updateGuestAtBar(guest: BarGoer, simDt: number) {
       guest.drinkKind = guest.id % 4;
     }
   } else {
-    // Face the bar; south-side guests sway to the music
+    // Face the counter; guests along the front sway to the music
     const isoG = worldToIso(guest.x, guest.y);
-    const isoB = worldToIso(ISLAND_BAR.cx, ISLAND_BAR.cy);
+    const face = barFacePoint(spot);
+    const isoB = worldToIso(face.x, face.y);
     guest.direction = angleToIsoDirection(Math.atan2(isoB.y - isoG.y, isoB.x - isoG.x));
-    const sway = (guest.barSpotIdx ?? 0) >= 3 ? Math.sin(guest.dancePhase * 1.2) * 1.8 : 0;
+    const sway = (guest.barSpotIdx ?? 0) < 4 ? Math.sin(guest.dancePhase * 1.2) * 1.8 : 0;
     guest.x = spot.x + sway;
     guest.y = spot.y;
     guest.barTimer = (guest.barTimer ?? 0) - simDt;
