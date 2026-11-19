@@ -5260,7 +5260,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             });
           }
           // The reception garden's bar (PixelLab) — src/render/receptionBar.ts
-          pushReceptionBar(drawables, ctx, originX, originY, propImgs.get('bar') ?? null);
+          pushReceptionBar(drawables, ctx, originX, originY, propImgs.get('bar') ?? null, discoBeatPhase / 2.8);
           // Lobby, courtyard and parking props (doors, plants, fountain, olive trees, lamps, signs)
           for (const d of getOutsideDrawables(ctx, originX, originY, discoBeatPhase / 2.8)) drawables.push(d);
         }
