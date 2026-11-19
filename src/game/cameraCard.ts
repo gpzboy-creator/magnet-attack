@@ -4,7 +4,7 @@
  *   - Up to `capacity` photos (12, +6 per SD-card upgrade): normal.
  *   - Above it the photographer may keep shooting up to `hardMax` (2 × capacity) — e.g. to catch
  *     every guest at the reception — but each extra photo makes copying the card slower, step by step:
- *     extras 1–3: +0.2 s each, 4–6: +0.3 s each, 7+: +0.45 s each (19.11: copying is quick, printing is the long step). The turbo station shortens it.
+ *     extras 1–3: +0.1 s each, 4–6: +0.15 s each, 7+: +0.25 s each (19.11: copying is quick, printing is the long step). The turbo station shortens it.
  */
 
 import { getMaxCameraCapacity } from './rules.ts';
@@ -13,9 +13,9 @@ export const CARD = {
   hardMaxFactor: 2,
   /** Extra seconds per photo above capacity, by how far over it is. */
   extraSecSteps: [
-    { upTo: 3, sec: 0.2 },
-    { upTo: 6, sec: 0.3 },
-    { upTo: Infinity, sec: 0.45 },
+    { upTo: 3, sec: 0.1 },
+    { upTo: 6, sec: 0.15 },
+    { upTo: Infinity, sec: 0.25 },
   ],
 } as const;
 

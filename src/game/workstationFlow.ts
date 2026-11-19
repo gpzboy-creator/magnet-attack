@@ -159,7 +159,8 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
   // Step 2 at Corner Workstation: Print the transferred photos via the Thermal Printer onto magnetic sheets
   // Timing: Every 4 photos = 1 sheet = 0.5 seconds (scaled by turbo_station upgrade)!
   const developAtWorkstation = () => {
-    if (player.transferAnimTimer > 0) {
+    // photos already on the laptop can print while the next card is still copying
+    if (player.transferAnimTimer > 0 && player.photosOnComputer <= 0) {
       transferCardToComputer(); // shows the "still copying" message
       return;
     }

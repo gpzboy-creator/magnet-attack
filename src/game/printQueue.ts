@@ -9,7 +9,7 @@ import { PHOTOS_PER_SHEET } from './rules.ts';
 
 export const PRINT = {
   /** Seconds per magnet sheet (4 photos) before the turbo speed-up. */
-  secPerSheet: 2.0,
+  secPerSheet: 2.8,
 } as const;
 
 export interface PrintQueue {

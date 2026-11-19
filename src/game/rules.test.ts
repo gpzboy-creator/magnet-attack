@@ -283,28 +283,28 @@ test('workstation chair automatically seats photographer on approach, stands up 
   assert.equal(prematureReturn.nextChairState.isSeated, false);
 });
 
-test('workstation printing and cutting timing scales at 0.5 seconds per 4 photos (1 sheet)', () => {
+test('workstation cutting timing scales at 1 second per 4 photos (1 sheet)', () => {
   const zero = calculateWorkstationJobTiming(0);
   assert.equal(zero.sheetCount, 0);
   assert.equal(zero.totalDurationSec, 0);
 
-  // 1 to 4 photos = 1 sheet = 0.5s (500ms)
+  // 1 to 4 photos = 1 sheet = 1s
   const four = calculateWorkstationJobTiming(4);
   assert.equal(four.sheetCount, 1);
-  assert.equal(four.totalDurationSec, 0.5);
-  assert.equal(four.durationMs, 500);
+  assert.equal(four.totalDurationSec, 1);
+  assert.equal(four.durationMs, 1000);
 
-  // 5 to 8 photos = 2 sheets = 1.0s (1000ms)
+  // 5 to 8 photos = 2 sheets = 2s
   const eight = calculateWorkstationJobTiming(8);
   assert.equal(eight.sheetCount, 2);
-  assert.equal(eight.totalDurationSec, 1.0);
-  assert.equal(eight.durationMs, 1000);
+  assert.equal(eight.totalDurationSec, 2);
+  assert.equal(eight.durationMs, 2000);
 
-  // 10 photos = 3 sheets = 1.5s (1500ms)
+  // 10 photos = 3 sheets = 3s
   const ten = calculateWorkstationJobTiming(10);
   assert.equal(ten.sheetCount, 3);
-  assert.equal(ten.totalDurationSec, 1.5);
-  assert.equal(ten.durationMs, 1500);
+  assert.equal(ten.totalDurationSec, 3);
+  assert.equal(ten.durationMs, 3000);
 
   // Sheet progress halfway through sheet 1 of 2 (remaining = 0.75s out of 1.0s)
   const prog1 = getWorkstationSheetProgress(0.75, 1.0, 2);
@@ -354,7 +354,7 @@ test('VIP moments, SD card capacity/batch bonus, roaming waiters, equipment upgr
   assert.ok(spdMult > 1.5);
   const turboJob = calculateWorkstationJobTiming(8, 2.0);
   assert.equal(turboJob.sheetCount, 2);
-  assert.equal(turboJob.totalDurationSec, 0.5);
+  assert.equal(turboJob.totalDurationSec, 1);
 
   // 4. Magnet frame styles & table preferences
   assert.equal(getPreferredFrameForGuest({ role: 'table_guest', tableId: 3 }), 'rose');
@@ -568,7 +568,7 @@ test('card transfer timing scales with photo count and turbo upgrade', () => {
   const four = calculateCardTransferTiming(4);
   const twelve = calculateCardTransferTiming(12);
   assert.ok(twelve.totalDurationSec > four.totalDurationSec);
-  assert.ok(Math.abs(four.totalDurationSec - (0.6 + 4 * 0.07)) < 0.01);
+  assert.ok(Math.abs(four.totalDurationSec - (0.4 + 4 * 0.04)) < 0.01);
   assert.ok(calculateCardTransferTiming(12, 2).totalDurationSec < twelve.totalDurationSec);
 });
 
@@ -581,14 +581,18 @@ test('camera is picked up from the desk only after the copy, off the chair, at t
   assert.equal(shouldPickUpCameraFromDesk({ ...base, cameraOnDesk: false }), false);
 });
 
-test('workstation [E] picks print > cut > transfer, and reports a running copy', () => {
+test('workstation [E] picks transfer > print > cut, and reports a running copy', () => {
   const idle = { isTransferring: false, uncutSheetsAtStation: 0, photosOnComputer: 0, photosInCamera: 0 };
   assert.equal(chooseWorkstationAction(idle), 'none');
   assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 5 }), 'transfer');
-  assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 5, photosOnComputer: 3 }), 'print');
+  // copying frees the card for more shooting, so it comes first at any time
+  assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 5, photosOnComputer: 3 }), 'transfer');
+  assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 3, uncutSheetsAtStation: 2 }), 'transfer');
   assert.equal(chooseWorkstationAction({ ...idle, photosOnComputer: 3, uncutSheetsAtStation: 2 }), 'print');
-  assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 3, uncutSheetsAtStation: 2 }), 'cut');
-  assert.equal(chooseWorkstationAction({ ...idle, isTransferring: true, photosOnComputer: 3 }), 'busy_transfer');
+  // while a card copies, earlier photos can print and printed sheets can be cut
+  assert.equal(chooseWorkstationAction({ ...idle, isTransferring: true, photosOnComputer: 3 }), 'print');
+  assert.equal(chooseWorkstationAction({ ...idle, isTransferring: true, uncutSheetsAtStation: 2 }), 'cut');
+  assert.equal(chooseWorkstationAction({ ...idle, isTransferring: true }), 'busy_transfer');
 });
 
 test('workflow objective routes camera photos to the transfer step first', () => {

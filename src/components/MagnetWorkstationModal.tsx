@@ -534,7 +534,7 @@ export const MagnetWorkstationModal: React.FC<MagnetWorkstationModalProps> = ({
         {/* Rectangular Workstation Table Top Surface */}
         <div className="bg-gradient-to-b from-amber-950/50 via-stone-900 to-stone-950 border-2 border-amber-800/60 rounded-2xl p-3.5 sm:p-4 shadow-inner">
           <div className="text-xs font-bold text-amber-200/90 mb-2.5 flex items-center justify-between">
-            <span>🪵 שולחן עבודה פינתי · 4 תמונות בדף = {(SECONDS_PER_SHEET / speedMult).toFixed(2)} שניות להדפסה ולחיתוך</span>
+            <span>🪵 שולחן עבודה פינתי · 4 תמונות בדף = {(SECONDS_PER_SHEET / speedMult).toFixed(2)} שניות לחיתוך</span>
             <span className="font-mono text-stone-400">PIXEL-ART WORKSTATION</span>
           </div>
 

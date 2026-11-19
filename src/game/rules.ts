@@ -440,7 +440,8 @@ export function updateWorkstationChairState(
 }
 
 export const PHOTOS_PER_SHEET = 4;
-export const SECONDS_PER_SHEET = 0.5;
+/** Cutting one sheet on the guillotine (printing has its own pace — printQueue.ts). */
+export const SECONDS_PER_SHEET = 1.0;
 
 export interface WorkstationJobTiming {
   photoCount: number;
@@ -686,7 +687,7 @@ export function getUpgradeCost(id: UpgradeId, currentLevel: number): number {
 }
 
 export function getWorkstationSpeedMultiplier(turboLevel: number): number {
-  // Level 0: 1.0x (0.5s/sheet), Level 1: 1.35x, Level 2: 1.7x, Level 3: 2.0x (0.25s/sheet)
+  // Level 0: 1.0x, Level 1: 1.35x, Level 2: 1.7x, Level 3: 2.0x (divides print and cut times)
   return Number((1 + Math.max(0, Math.min(MAX_UPGRADE_LEVEL, turboLevel)) * 0.35).toFixed(2));
 }
 
@@ -1278,9 +1279,9 @@ export function computePhotographerPose(params: {
 // ============================================================================
 
 /** Fixed overhead of inserting the card / mounting it on the laptop. */
-export const CARD_TRANSFER_BASE_SEC = 0.6;
+export const CARD_TRANSFER_BASE_SEC = 0.4;
 /** Copy time per photo. */
-export const CARD_TRANSFER_SEC_PER_PHOTO = 0.07;
+export const CARD_TRANSFER_SEC_PER_PHOTO = 0.04;
 
 /**
  * How long copying the camera's card to the laptop takes. The turbo-station upgrade
@@ -1320,8 +1321,9 @@ export function shouldPickUpCameraFromDesk(params: {
 export type WorkstationActionKind = 'busy_transfer' | 'cut' | 'print' | 'transfer' | 'none';
 
 /**
- * Which job the [E] action starts at the workstation. Printing is the long job and runs on its own,
- * so it starts first: print transferred photos → cut the sheets that are out → copy the camera card.
+ * Which job the [E] action starts at the workstation (Shahar, 19.11). Copying the card is quick and
+ * frees it for more shooting, so it comes first at any time (even mid-print or mid-cut); then the
+ * long print job (it runs on its own); then cutting the sheets that are out.
  */
 export function chooseWorkstationAction(state: {
   isTransferring: boolean;
@@ -1329,10 +1331,10 @@ export function chooseWorkstationAction(state: {
   photosOnComputer: number;
   photosInCamera: number;
 }): WorkstationActionKind {
-  if (state.photosOnComputer > 0 && !state.isTransferring) return 'print';
+  if (state.photosInCamera > 0 && !state.isTransferring) return 'transfer';
+  if (state.photosOnComputer > 0) return 'print';
   if (state.uncutSheetsAtStation > 0) return 'cut';
   if (state.isTransferring) return 'busy_transfer';
-  if (state.photosInCamera > 0) return 'transfer';
   return 'none';
 }
 
