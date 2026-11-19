@@ -130,6 +130,7 @@ import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { pushWorkstationChair } from '../render/workstationChair';
 import { pushHallTables } from '../render/hallTables';
 import { pushReceptionBar } from '../render/receptionBar';
+import { constrainToWalkable, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
@@ -979,6 +980,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     };
 
     const ARENA_RADIUS = 390;
+    let playerLastSafe = { x: 0, y: 0 }; // last walkable spot (playerMovement.ts falls back to it)
     const player = {
       x: 10,
       y: 65,
@@ -2754,33 +2756,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.x += player.vx * simDt;
             player.y += player.vy * simDt;
 
-            // Walkable: the hall, the side-exit walkway and the parking lot outside
-            const walkable = (x: number, y: number) =>
-              Math.hypot(x, y) <= ARENA_RADIUS || isWalkableOutside(x, y);
-            if (!walkable(player.x, player.y)) {
-              if (walkable(player.x, prevY)) {
-                player.y = prevY;
-              } else if (walkable(prevX, player.y)) {
-                player.x = prevX;
-              } else if (walkable(prevX, prevY)) {
-                player.x = prevX;
-                player.y = prevY;
-                // Pushing against a wall next to a doorway: slide toward the opening
-                const slideY = doorwaySlideTarget(player.x, player.y);
-                if (slideY !== null) {
-                  const stepY = Math.sign(slideY - player.y) * Math.min(Math.abs(slideY - player.y), moveSpeed * simDt);
-                  if (walkable(player.x, player.y + stepY)) player.y += stepY;
-                }
-              } else {
-                const distFromCenter = Math.hypot(player.x, player.y);
-                player.x = (player.x / distFromCenter) * ARENA_RADIUS;
-                player.y = (player.y / distFromCenter) * ARENA_RADIUS;
-              }
-            }
-
-            const solved = resolveFloorObstacles(player, PLAYER_BODY_RADIUS, FLOOR_OBSTACLES);
-            player.x = solved.x;
-            player.y = solved.y;
+            // Stay on walkable ground: slide along walls, step toward doorways, never teleport (playerMovement.ts)
+            const walkable = (x: number, y: number) => Math.hypot(x, y) <= ARENA_RADIUS || isWalkableOutside(x, y);
+            const walked = constrainToWalkable({ x: prevX, y: prevY }, { x: player.x, y: player.y }, walkable, doorwaySlideTarget, moveSpeed * simDt);
+            const pushed = walked ? resolveFloorObstacles(walked, PLAYER_BODY_RADIUS, FLOOR_OBSTACLES) : null;
+            const settled = settlePosition(walked, pushed, playerLastSafe, walkable);
+            player.x = settled.x;
+            player.y = settled.y;
+            if (walkable(player.x, player.y)) playerLastSafe = { x: player.x, y: player.y };
 
             if (player.atCutter) {
               // Planted at the cutter while working the lever
