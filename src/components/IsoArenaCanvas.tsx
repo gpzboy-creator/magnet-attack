@@ -69,25 +69,18 @@ import {
 import {
   BAR_GUEST_SPOTS,
   BAR_PICKUP_SPOTS,
-  ISLAND_BAR,
   LOUNGE,
   RATTAN_HIGH_TABLES,
-  drawBarShelfTower,
-  drawBartender,
   drawCigaretteSmoke,
   drawGoboProjections,
   drawHallCeiling,
   drawHallFloor,
   drawHallWalls,
   drawHeldDrink,
-  drawIslandBarPiece,
   drawRattanHighTable,
   drawUplitTree,
   drawVelvetLounge,
-  getIslandBarPieces,
   getMovingHeads,
-  BARTENDER_LOOKS,
-  getBartenderPose,
 } from '../game/hallPixelArt';
 import {
   CharacterAndSizeConfig,
@@ -130,6 +123,8 @@ import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { pushWorkstationChair } from '../render/workstationChair';
 import { pushHallTables } from '../render/hallTables';
 import { pushReceptionBar } from '../render/receptionBar';
+import { ISLAND_BAR_OBSTACLE, islandBartenderSpots, pushIslandBar } from '../render/hallIslandBar';
+import { nextBarVisitDelay, sendGuestToBar, updateGuestAtBar } from '../game/hallBarVisits';
 import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
@@ -412,13 +407,7 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   // Rattan high tables along the green wall
   ...RATTAN_HIGH_TABLES.map((t) => ({ kind: 'circle' as const, x: t.x, y: t.y, r: 14 })),
   // Square island bar (counter ring + shelf tower)
-  {
-    kind: 'box',
-    minX: ISLAND_BAR.cx - ISLAND_BAR.half,
-    minY: ISLAND_BAR.cy - ISLAND_BAR.half,
-    maxX: ISLAND_BAR.cx + ISLAND_BAR.half,
-    maxY: ISLAND_BAR.cy + ISLAND_BAR.half,
-  },
+  ISLAND_BAR_OBSTACLE,
   // DJ stage (PixelLab set)
   { kind: 'box', ...DJ_SET.stage },
   // Magnet workstation desk (the chair in front of it stays reachable)
@@ -3127,10 +3116,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                   }
                 }
                 const hallNow = discoBeatPhase / 2.8;
-                BARTENDER_LOOKS.forEach((_, bi) => {
-                  const pose = getBartenderPose(bi, hallNow);
+                for (const pose of islandBartenderSpots(hallNow)) {
                   if (isTargetInCone(cone, pose, 8)) subjects.push({ kind: 'staff' });
-                });
+                }
                 for (const w of waiters) {
                   if (isTargetInCone(cone, w, 8)) subjects.push({ kind: 'staff' });
                 }
@@ -3307,33 +3295,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
-          // BAR VISITS: every few seconds a dancer walks to the island bar for a drink
-          // (some lean on the counter, smokers light up), then returns to the dance floor
+          // BAR VISITS: every few seconds a dancer walks to the bar for a drink (hallBarVisits.ts)
           barVisitTimer -= simDt;
           if (barVisitTimer <= 0) {
-            barVisitTimer = 2.5 + Math.random() * 3;
-            const atBar = guests.filter((g) => g.guestActivity === 'bar');
-            if (atBar.length < 4) {
-              const usedSpots = new Set(atBar.map((g) => g.barSpotIdx));
-              const freeSpots = BAR_GUEST_SPOTS.map((_, i) => i).filter((i) => !usedSpots.has(i));
-              const candidates = guests.filter(
-                (g) =>
-                  g.guestActivity === 'dancing' &&
-                  !g.isEnteringFloor &&
-                  !g.seekingMagnet &&
-                  g.celebrateTimer <= 0 &&
-                  (g.activityCooldown ?? 0) <= 0
-              );
-              if (freeSpots.length > 0 && candidates.length > 3) {
-                const goer = candidates[Math.floor(Math.random() * candidates.length)];
-                goer.guestActivity = 'bar';
-                goer.barSpotIdx = freeSpots[Math.floor(Math.random() * freeSpots.length)];
-                goer.barTimer = 7 + Math.random() * 7;
-                goer.atBarArrived = false;
-                goer.speechBubbleText = goer.isSmoker ? '🚬 יוצא לבר רגע' : '🍸 לבר!';
-                goer.wantsPhotoTimer = 1.4;
-              }
-            }
+            barVisitTimer = nextBarVisitDelay();
+            sendGuestToBar(guests);
           }
 
           // ====================================================================
@@ -3441,45 +3407,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 bestScore = Math.max(bestScore, score);
               }
             } else if (guest.guestActivity === 'bar') {
-              // 1b. AT THE ISLAND BAR: walk to a free spot, get a drink, lean / smoke / sway, then go back
-              guest.isSeated = false;
-              guest.role = 'dancer';
-              const spot = BAR_GUEST_SPOTS[guest.barSpotIdx ?? 0];
-              if (!guest.atBarArrived) {
-                const mv = moveTowardPoint(guest, spot, 52, simDt, 4);
-                const stepLen = Math.hypot(mv.x - guest.x, mv.y - guest.y);
-                if (stepLen > 0) {
-                  const isoG = worldToIso(guest.x, guest.y);
-                  const isoT = worldToIso(spot.x, spot.y);
-                  guest.direction = angleToIsoDirection(Math.atan2(isoT.y - isoG.y, isoT.x - isoG.x));
-                  guest.strideDist += stepLen * 1.5;
-                }
-                guest.x = mv.x;
-                guest.y = mv.y;
-                if (mv.arrived) {
-                  guest.atBarArrived = true;
-                  // Bartender hands over a drink
-                  guest.drinkTimer = Math.max(guest.drinkTimer ?? 0, (guest.barTimer ?? 8) + 8);
-                  guest.drinkKind = guest.id % 4;
-                }
-              } else {
-                // Face the bar; south-side guests sway to the music
-                const isoG = worldToIso(guest.x, guest.y);
-                const isoB = worldToIso(ISLAND_BAR.cx, ISLAND_BAR.cy);
-                guest.direction = angleToIsoDirection(Math.atan2(isoB.y - isoG.y, isoB.x - isoG.x));
-                const sway = (guest.barSpotIdx ?? 0) >= 3 ? Math.sin(guest.dancePhase * 1.2) * 1.8 : 0;
-                guest.x = spot.x + sway;
-                guest.y = spot.y;
-                guest.barTimer = (guest.barTimer ?? 0) - simDt;
-                if ((guest.barTimer ?? 0) <= 0) {
-                  guest.guestActivity = 'dancing';
-                  guest.atBarArrived = false;
-                  guest.barSpotIdx = undefined;
-                  guest.isEnteringFloor = true;
-                  guest.arrivalDelayTimer = 0;
-                  guest.activityCooldown = 6;
-                }
-              }
+              // 1b. AT THE BAR: walk to a free spot, get a drink, then go back (hallBarVisits.ts)
+              updateGuestAtBar(guest, simDt);
             } else if (guest.guestActivity === 'seated') {
               // 2. SEATED GUEST AT BANQUET TABLE (or walking from dancefloor back to their chair)
               const seatX = guest.seatX ?? guest.homeX;
@@ -4114,29 +4043,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         });
       }
 
-      // 2A-2. Square black island bar: counter split into pieces for depth, backlit bottle tower,
-      // and the bartender crew (1 man : 3 women, all in black) working inside the ring
-      for (const piece of getIslandBarPieces()) {
-        const pIso = worldToIso(piece.wx + piece.w / 2, piece.wy + piece.d / 2);
-        drawables.push({
-          sortY: pIso.y,
-          draw: () => drawIslandBarPiece(ctx, originX, originY, piece, drawIsoBox, hallT),
-        });
-      }
-      const towerIso = worldToIso(ISLAND_BAR.cx, ISLAND_BAR.cy);
-      drawables.push({
-        sortY: towerIso.y,
-        draw: () => drawBarShelfTower(ctx, originX, originY, drawIsoBox, hallT),
-      });
-      BARTENDER_LOOKS.forEach((look, bi) => {
-        const pose = getBartenderPose(bi, hallT);
-        const bIso = worldToIso(pose.x, pose.y);
-        drawables.push({
-          sortY: bIso.y,
-          draw: () =>
-            drawBartender(ctx, originX + bIso.x, originY + bIso.y, look, pose.action, hallT, bi + 1),
-        });
-      });
+      // 2A-2. Square black island bar + bartender crew (render/hallIslandBar.ts)
+      pushIslandBar(drawables, ctx, originX, originY, drawIsoBox, hallT);
 
       // 2A-3. Raised DJ Stage, Giant Animated LED Video Wall & Cyan LED Booth (photos 6 & 13)
       // DJ set (PixelLab): stage, LED wall, the DJ behind his console, the console in front of him
