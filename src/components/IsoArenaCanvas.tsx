@@ -132,6 +132,7 @@ import { createEntrance, startEntrance, stepEntrance } from '../game/coupleSuite
 import { cardLimits } from '../game/cameraCard';
 import { createWorkstationFlow } from '../game/workstationFlow';
 import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
+import { pushWorkstationChair } from '../render/workstationChair';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
   EventPhaseId,
@@ -4632,127 +4633,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // ========================================================================
       // 3A-CHAIR. PHOTOGRAPHER'S SWIVEL CHAIR AT MAGNET WORKSTATION
       // ========================================================================
-      const chairIso = worldToIso(WORKSTATION_CHAIR_POS.x, WORKSTATION_CHAIR_POS.y);
-      drawables.push({
-        sortY: chairIso.y - 1.5,
-        draw: () => {
-          const cx = WORKSTATION_CHAIR_POS.x;
-          const cy = WORKSTATION_CHAIR_POS.y;
-          const baseIso = worldToIso(cx, cy, 0);
-          const sx = originX + baseIso.x;
-          const sy = originY + baseIso.y;
-
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
-          ctx.beginPath();
-          ctx.ellipse(sx, sy + 2, 16, 8, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          if (player.isSeatedAtStation) {
-            ctx.strokeStyle = '#38bdf8';
-            ctx.lineWidth = 1.6;
-            ctx.beginPath();
-            ctx.ellipse(sx, sy + 2, 20, 10, 0, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-
-          const legOffsets = [
-            { dx: -11, dy: 0 },
-            { dx: 11, dy: 0 },
-            { dx: 0, dy: -11 },
-            { dx: 0, dy: 11 },
-            { dx: -8, dy: 8 },
-          ];
-          ctx.strokeStyle = '#334155';
-          ctx.lineWidth = 2.4;
-          for (const leg of legOffsets) {
-            const footIso = worldToIso(cx + leg.dx, cy + leg.dy, 1);
-            ctx.beginPath();
-            ctx.moveTo(sx, sy - 2);
-            ctx.lineTo(originX + footIso.x, originY + footIso.y);
-            ctx.stroke();
-
-            ctx.fillStyle = '#020617';
-            ctx.beginPath();
-            ctx.arc(originX + footIso.x, originY + footIso.y + 1, 2, 0, Math.PI * 2);
-            ctx.fill();
-          }
-
-          const colTop = worldToIso(cx, cy, 13);
-          ctx.strokeStyle = '#94a3b8';
-          ctx.lineWidth = 4;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy - 2);
-          ctx.lineTo(originX + colTop.x, originY + colTop.y);
-          ctx.stroke();
-
-          drawIsoBox(
-            originX,
-            originY,
-            cx - 10,
-            cy - 10,
-            20,
-            20,
-            4.5,
-            player.isSeatedAtStation ? '#0284c7' : '#1e293b',
-            '#0f172a',
-            '#334155',
-            '#020617',
-            13
-          );
-        },
-      });
-
-      drawables.push({
-        sortY: chairIso.y + 2.5,
-        draw: () => {
-          const cx = WORKSTATION_CHAIR_POS.x;
-          const cy = WORKSTATION_CHAIR_POS.y;
-
-          drawIsoBox(
-            originX,
-            originY,
-            cx - 11,
-            cy - 6,
-            3,
-            14,
-            7,
-            '#334155',
-            '#0f172a',
-            '#1e293b',
-            '#020617',
-            17
-          );
-          drawIsoBox(
-            originX,
-            originY,
-            cx + 8,
-            cy - 6,
-            3,
-            14,
-            7,
-            '#334155',
-            '#0f172a',
-            '#1e293b',
-            '#020617',
-            17
-          );
-
-          drawIsoBox(
-            originX,
-            originY,
-            cx - 9,
-            cy + 7,
-            18,
-            4,
-            17,
-            '#0284c7',
-            '#0f172a',
-            '#1e293b',
-            '#020617',
-            17.5
-          );
-        },
-      });
+      pushWorkstationChair(drawables, ctx, originX, originY, WORKSTATION_CHAIR_POS, player.isSeatedAtStation, drawIsoBox);
 
       // ========================================================================
       // 3B. STANDING TRIPOD MAGNETIC WHITEBOARD WITH FAIRY LIGHTS GARLAND (Section 5)
