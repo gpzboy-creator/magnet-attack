@@ -1,15 +1,15 @@
 /**
- * Back rooms off the lobby, laid out like a real event venue (south of the lobby):
+ * Back rooms laid out like a real event venue (Shahar, 19.11):
  *
- *   lobby ─┬─ restroom corridor ──┬─ ♿ accessible restroom (west side of the corridor)
- *          │                      └─ foyer ─┬─ ♀ women's room (5 stalls, island sinks, hand dryer, plant)
- *          │                                └─ ♂ men's room   (5 stalls, island sinks, hand dryer, plant)
- *          └─ 💍 bridal suite (couple's rest room: vanity, sofa, flowers) — the bride & groom wait here
- *             before the chuppah and before the dancing.
- * The kitchen stays at the back of house (service yard, venueOutside.ts).
+ *   hall ── 🚻 restroom foyer ─┬─ ♀ women's room (5 stalls, island sinks, hand dryer, plant)
+ *   (front edge, by the exit)  ├─ ♿ accessible restroom
+ *                              └─ ♂ men's room   (5 stalls, island sinks, hand dryer, plant)
+ *   lobby ── 💍 bridal suite (vanity, sofa, flowers) — the bride & groom wait here before the
+ *            chuppah and before the dancing.
+ * The restrooms open straight off the hall (no long corridor); the kitchen stays at the back of house.
  *
- * Rooms, walls and door frames are code-drawn (like the lobby); furniture is PixelLab art
- * (docs/ASSETS.md, tools/make_room_props.py). Walls are low "cut-away" walls so people inside stay visible.
+ * Rooms and door frames are code-drawn; the rooms are marked by a low gold border instead of walls.
+ * Furniture is PixelLab art (docs/ASSETS.md, tools/make_room_props.py).
  */
 
 import { worldToIso } from './rules.ts';
@@ -33,18 +33,18 @@ interface Room {
 }
 
 export const BRIDAL_SUITE: Rect = { minX: 558, maxX: 686, minY: 380, maxY: 620 };
-const CORRIDOR: Rect = { minX: 496, maxX: 548, minY: 380, maxY: 650 };
-const ACCESSIBLE: Rect = { minX: 448, maxX: 488, minY: 420, maxY: 500 };
-const FOYER: Rect = { minX: 448, maxX: 686, minY: 660, maxY: 700 };
-const WOMEN: Rect = { minX: 448, maxX: 562, minY: 710, maxY: 924 };
-const MEN: Rect = { minX: 572, maxX: 686, minY: 710, maxY: 924 };
+/** Hall floor between the walkable dance-hall disk and its front edge, leading to the restroom door. */
+const HALL_APRON: Rect = { minX: 240, maxX: 440, minY: 220, maxY: 440 };
+const FOYER: Rect = { minX: 220, maxX: 502, minY: 452, maxY: 506 };
+const WOMEN: Rect = { minX: 220, maxX: 330, minY: 516, maxY: 730 };
+const ACCESSIBLE: Rect = { minX: 340, maxX: 382, minY: 516, maxY: 600 };
+const MEN: Rect = { minX: 392, maxX: 502, minY: 516, maxY: 730 };
 
 const ROOMS: Room[] = [
   { id: 'suite', r: BRIDAL_SUITE, kind: 'suite' },
-  { id: 'corridor', r: CORRIDOR, kind: 'corridor' },
-  { id: 'accessible', r: ACCESSIBLE, kind: 'tiles' },
   { id: 'foyer', r: FOYER, kind: 'corridor' },
   { id: 'women', r: WOMEN, kind: 'tiles' },
+  { id: 'accessible', r: ACCESSIBLE, kind: 'tiles' },
   { id: 'men', r: MEN, kind: 'tiles' },
 ];
 
@@ -56,15 +56,14 @@ interface Door {
 }
 
 const DOORS: Door[] = [
-  { r: { minX: 500, maxX: 524, minY: LOBBY_FRONT_Y - 6, maxY: CORRIDOR.minY + 6 }, axis: 'h', sign: { text: '🚻 שירותים', color: '#e0f2fe' } },
+  { r: { minX: 300, maxX: 336, minY: FOYER.minY - 16, maxY: FOYER.minY + 6 }, axis: 'h', sign: { text: '🚻 שירותים', color: '#e0f2fe' } },
   { r: { minX: 607, maxX: 631, minY: LOBBY_FRONT_Y - 6, maxY: BRIDAL_SUITE.minY + 6 }, axis: 'h', sign: { text: '💍 חדר חתן וכלה', color: '#fbcfe8' } },
-  { r: { minX: ACCESSIBLE.maxX - 6, maxX: CORRIDOR.minX + 6, minY: 446, maxY: 470 }, axis: 'v', sign: { text: '♿ נגישים', color: '#bfdbfe' } },
-  { r: { minX: 508, maxX: 536, minY: CORRIDOR.maxY - 6, maxY: FOYER.minY + 6 }, axis: 'h' },
-  { r: { minX: 492, maxX: 516, minY: FOYER.maxY - 6, maxY: WOMEN.minY + 6 }, axis: 'h', sign: { text: '♀ נשים', color: '#fbcfe8' } },
-  { r: { minX: 616, maxX: 640, minY: FOYER.maxY - 6, maxY: MEN.minY + 6 }, axis: 'h', sign: { text: '♂ גברים', color: '#bfdbfe' } },
+  { r: { minX: 263, maxX: 287, minY: FOYER.maxY - 6, maxY: WOMEN.minY + 6 }, axis: 'h', sign: { text: '♀ נשים', color: '#fbcfe8' } },
+  { r: { minX: 349, maxX: 373, minY: FOYER.maxY - 6, maxY: ACCESSIBLE.minY + 6 }, axis: 'h', sign: { text: '♿ נגישים', color: '#bfdbfe' } },
+  { r: { minX: 435, maxX: 459, minY: FOYER.maxY - 6, maxY: MEN.minY + 6 }, axis: 'h', sign: { text: '♂ גברים', color: '#bfdbfe' } },
 ];
 
-export const ROOMS_WALKABLE: Rect[] = [...ROOMS.map((rm) => rm.r), ...DOORS.map((d) => d.r)];
+export const ROOMS_WALKABLE: Rect[] = [HALL_APRON, ...ROOMS.map((rm) => rm.r), ...DOORS.map((d) => d.r)];
 
 // Furniture: PixelLab sprites placed by their floor footprint (left ground corner = minX, maxY).
 // Measured by tools/make_room_props.py; `s` sets the footprint: lx·s × ly·s world units.
@@ -90,31 +89,29 @@ interface Placed {
   onWall?: boolean;
 }
 
-/** Five stalls in a row along a room's west wall, doors facing the room. */
-const stallRow = (minX: number): Placed[] => [756, 796, 836, 876, 916].map((maxY) => ({ prop: 'stall' as const, minX, maxY }));
+/** Five stalls in a row along a room's west side, doors facing the room. */
+const stallRow = (minX: number): Placed[] => [558, 598, 638, 678, 718].map((maxY) => ({ prop: 'stall' as const, minX, maxY }));
 
 const PLACED: Placed[] = [
-  // bridal suite: vanity and sofa on the west wall (kept off it: the sprites' backs lean toward the wall)
+  // bridal suite: vanity and sofa on the west side (kept off it: the sprites' backs lean back)
   { prop: 'vanity', minX: 570, maxY: 470 },
   { prop: 'sofa', minX: 570, maxY: 596 },
   { prop: 'flowers', minX: 664, maxY: 412 },
-  // corridor decor
-  { prop: 'flowers', minX: 530, maxY: 440 },
-  { prop: 'plant', minX: 528, maxY: 636 },
+  // restroom foyer decor
+  { prop: 'plant', minX: 226, maxY: 500 },
+  { prop: 'flowers', minX: 478, maxY: 500 },
   // accessible restroom: a corner unit with its own grab bars and basin
-  { prop: 'accessible', minX: 450, maxY: 462 },
+  { prop: 'accessible', minX: 342, maxY: 558 },
   // women's room
-  ...stallRow(452),
-  { prop: 'island', minX: 512, maxY: 836 },
-  { prop: 'dryer', minX: 534, maxY: 716, z: 34, onWall: true },
-  { prop: 'plant', minX: 542, maxY: 918 },
+  ...stallRow(224),
+  { prop: 'island', minX: 284, maxY: 640 },
+  { prop: 'dryer', minX: 306, maxY: 524, z: 30, onWall: true },
+  { prop: 'plant', minX: 312, maxY: 726 },
   // men's room
-  ...stallRow(576),
-  { prop: 'island', minX: 636, maxY: 836 },
-  { prop: 'dryer', minX: 660, maxY: 716, z: 34, onWall: true },
-  { prop: 'plant', minX: 666, maxY: 918 },
-  // foyer decor
-  { prop: 'plant', minX: 668, maxY: 694 },
+  ...stallRow(396),
+  { prop: 'island', minX: 456, maxY: 640 },
+  { prop: 'dryer', minX: 478, maxY: 524, z: 30, onWall: true },
+  { prop: 'plant', minX: 484, maxY: 726 },
 ];
 
 const footprint = (pl: Placed): Rect => {
@@ -142,14 +139,15 @@ export const SUITE_TO_HALL: Array<{ x: number; y: number }> = [
   { x: 0, y: 2 },
 ];
 
-/** A guest's visit to the restrooms from the yard: garden gate → lobby → corridor (and back the same way). */
+/** A guest's visit to the restrooms from the yard: garden gate → lobby → hall exit → restroom foyer (and back). */
 export const YARD_TO_RESTROOM: Array<{ x: number; y: number }> = [
   { x: 720, y: 240 },
   { x: 675, y: 240 },
   { x: 560, y: 300 },
-  { x: 512, y: LOBBY_FRONT_Y - 12 },
-  { x: 512, y: CORRIDOR.minY + 22 },
-  { x: 516, y: 560 },
+  { x: 460, y: 236 },
+  { x: 318, y: 300 },
+  { x: 318, y: FOYER.minY - 10 },
+  { x: 318, y: (FOYER.minY + FOYER.maxY) / 2 },
 ];
 
 const roomImgs = new Map<RoomProp, HTMLImageElement>();
@@ -322,6 +320,8 @@ export function getRoomDrawables(ctx: CanvasRenderingContext2D, ox: number, oy: 
     list.push({
       sortY: at((fp.minX + fp.maxX) / 2, (fp.minY + fp.maxY) / 2) + (pl.onWall ? -2 : 0),
       draw: () => {
+        // no walls any more: a wall-mounted piece hangs on its own small white panel
+        if (pl.onWall) box(ctx, ox, oy, { minX: fp.minX - 2, maxX: fp.maxX + 2, minY: fp.minY - 4, maxY: fp.minY - 1 }, (pl.z ?? 0) + 18, '#f8fafc', '#cbd5e1', '#94a3b8');
         const img = roomImg(pl.prop);
         if (img) drawPropSprite(ctx, img, ROOM_SPRITES[pl.prop], ox, oy, pl.minX, pl.maxY, pl.z ?? 0);
       },
