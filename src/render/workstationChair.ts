@@ -1,10 +1,61 @@
 /**
- * The photographer's chair at the magnet workstation (moved out of IsoArenaCanvas.tsx, "3A-CHAIR").
- * Two drawables: the seat goes behind the photographer, the backrest in front of him.
+ * The photographer's chair at the magnet workstation: the wooden cross-back wedding chair
+ * (PixelLab, docs/ASSETS.md) — the same style as the chairs in the hall (Shahar, 19.11).
+ * Empty, it stands tucked in at the table (seen from behind); when the photographer sits he turns it
+ * toward the room (his seated sprite faces the viewer), so it is drawn from the front, behind him.
  */
 
 import { worldToIso } from '../game/rules';
-import type { DrawIsoBox } from './workstationDesk';
+
+export interface ChairSprite {
+  file: string;
+  /** Sprite pixel under the middle of the four feet (placed on the world point). */
+  ax: number;
+  ay: number;
+  s: number;
+}
+
+/** Cross-back chair sprites: `back` faces away from the viewer (up-right), `front` faces down-left. */
+export const CROSSBACK_CHAIR = {
+  back: { file: 'assets/aistudio/chair-crossback-back.png', ax: 82, ay: 213, s: 0.16 },
+  front: { file: 'assets/aistudio/chair-crossback-front.png', ax: 68, ay: 224, s: 0.16 },
+} satisfies Record<string, ChairSprite>;
+
+const images = new Map<string, HTMLImageElement>();
+export function chairImg(sp: ChairSprite): HTMLImageElement | null {
+  if (typeof Image === 'undefined') return null;
+  let img = images.get(sp.file);
+  if (!img) {
+    img = new Image();
+    img.src = `${import.meta.env?.BASE_URL ?? '/'}${sp.file}`;
+    images.set(sp.file, img);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+export function drawChairSprite(
+  ctx: CanvasRenderingContext2D,
+  sp: ChairSprite,
+  sx: number,
+  sy: number,
+  clip?: Array<[number, number]>
+) {
+  const img = chairImg(sp);
+  if (!img) return;
+  const x0 = sx - sp.ax * sp.s;
+  const y0 = sy - sp.ay * sp.s;
+  ctx.save();
+  if (clip) {
+    ctx.beginPath();
+    clip.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(x0 + px * sp.s, y0 + py * sp.s) : ctx.lineTo(x0 + px * sp.s, y0 + py * sp.s)));
+    ctx.closePath();
+    ctx.clip();
+  }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, Math.round(x0), Math.round(y0), Math.round(img.width * sp.s), Math.round(img.height * sp.s));
+  ctx.restore();
+}
 
 export function pushWorkstationChair(
   drawables: Array<{ sortY: number; draw: () => void }>,
@@ -12,24 +63,18 @@ export function pushWorkstationChair(
   originX: number,
   originY: number,
   pos: { x: number; y: number },
-  seated: boolean,
-  drawIsoBox: DrawIsoBox
+  seated: boolean
 ) {
   const chairIso = worldToIso(pos.x, pos.y);
+  const sx = originX + chairIso.x;
+  const sy = originY + chairIso.y;
   drawables.push({
     sortY: chairIso.y - 1.5,
     draw: () => {
-      const cx = pos.x;
-      const cy = pos.y;
-      const baseIso = worldToIso(cx, cy, 0);
-      const sx = originX + baseIso.x;
-      const sy = originY + baseIso.y;
-
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.5)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
       ctx.beginPath();
-      ctx.ellipse(sx, sy + 2, 16, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(sx, sy + 2, 14, 7, 0, 0, Math.PI * 2);
       ctx.fill();
-
       if (seated) {
         ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 1.6;
@@ -37,103 +82,7 @@ export function pushWorkstationChair(
         ctx.ellipse(sx, sy + 2, 20, 10, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
-
-      const legOffsets = [
-        { dx: -11, dy: 0 },
-        { dx: 11, dy: 0 },
-        { dx: 0, dy: -11 },
-        { dx: 0, dy: 11 },
-        { dx: -8, dy: 8 },
-      ];
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 2.4;
-      for (const leg of legOffsets) {
-        const footIso = worldToIso(cx + leg.dx, cy + leg.dy, 1);
-        ctx.beginPath();
-        ctx.moveTo(sx, sy - 2);
-        ctx.lineTo(originX + footIso.x, originY + footIso.y);
-        ctx.stroke();
-
-        ctx.fillStyle = '#020617';
-        ctx.beginPath();
-        ctx.arc(originX + footIso.x, originY + footIso.y + 1, 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      const colTop = worldToIso(cx, cy, 13);
-      ctx.strokeStyle = '#94a3b8';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy - 2);
-      ctx.lineTo(originX + colTop.x, originY + colTop.y);
-      ctx.stroke();
-
-      drawIsoBox(
-        originX,
-        originY,
-        cx - 10,
-        cy - 10,
-        20,
-        20,
-        4.5,
-        seated ? '#0284c7' : '#1e293b',
-        '#0f172a',
-        '#334155',
-        '#020617',
-        13
-      );
-    },
-  });
-
-  drawables.push({
-    sortY: chairIso.y + 2.5,
-    draw: () => {
-      const cx = pos.x;
-      const cy = pos.y;
-
-      drawIsoBox(
-        originX,
-        originY,
-        cx - 11,
-        cy - 6,
-        3,
-        14,
-        7,
-        '#334155',
-        '#0f172a',
-        '#1e293b',
-        '#020617',
-        17
-      );
-      drawIsoBox(
-        originX,
-        originY,
-        cx + 8,
-        cy - 6,
-        3,
-        14,
-        7,
-        '#334155',
-        '#0f172a',
-        '#1e293b',
-        '#020617',
-        17
-      );
-
-      drawIsoBox(
-        originX,
-        originY,
-        cx - 9,
-        cy + 7,
-        18,
-        4,
-        17,
-        '#0284c7',
-        '#0f172a',
-        '#1e293b',
-        '#020617',
-        17.5
-      );
+      drawChairSprite(ctx, seated ? CROSSBACK_CHAIR.front : CROSSBACK_CHAIR.back, sx, sy);
     },
   });
 }

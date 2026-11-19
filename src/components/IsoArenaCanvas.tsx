@@ -433,8 +433,6 @@ const FLOOR_OBSTACLES: FloorObstacle[] = [
   },
   // DJ stage (PixelLab set)
   { kind: 'box', ...DJ_SET.stage },
-  // Dancefloor subwoofer
-  { kind: 'box', minX: -102, minY: 56, maxX: -76, maxY: 80 },
   // Magnet workstation desk (the chair in front of it stays reachable)
   WORKSTATION_DESK_BOX,
   // Tripod magnet board easel
@@ -4262,39 +4260,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         });
       }
 
-      // Dancefloor Monitor Subwoofer with Pulsing Bass Rings
-      const speakerIso = worldToIso(-88, 68);
-      drawables.push({
-        sortY: speakerIso.y,
-        draw: () => {
-          const bassBump = Math.abs(Math.sin(discoBeatPhase * 2)) * 2;
-          drawIsoBox(
-            originX,
-            originY,
-            -102,
-            56,
-            26,
-            24,
-            28 + bassBump,
-            '#334155',
-            '#0f172a',
-            '#1e293b',
-            '#020617'
-          );
-          const coneIso = worldToIso(-89, 79, 14);
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
-          ctx.lineWidth = 1.4;
-          ctx.beginPath();
-          ctx.arc(
-            originX + coneIso.x,
-            originY + coneIso.y,
-            6 + ((discoBeatPhase * 8) % 10),
-            0,
-            Math.PI * 2
-          );
-          ctx.stroke();
-        },
-      });
 
       // 2B. Long banquet tables (white cloth, flower ball + crystal candelabra), ghost chairs on empty seats
       for (const tbl of BANQUET_TABLES) {
@@ -4633,7 +4598,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       // ========================================================================
       // 3A-CHAIR. PHOTOGRAPHER'S SWIVEL CHAIR AT MAGNET WORKSTATION
       // ========================================================================
-      pushWorkstationChair(drawables, ctx, originX, originY, WORKSTATION_CHAIR_POS, player.isSeatedAtStation, drawIsoBox);
+      pushWorkstationChair(drawables, ctx, originX, originY, WORKSTATION_CHAIR_POS, player.isSeatedAtStation);
 
       // ========================================================================
       // 3B. STANDING TRIPOD MAGNETIC WHITEBOARD WITH FAIRY LIGHTS GARLAND (Section 5)
