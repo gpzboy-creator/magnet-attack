@@ -1,11 +1,21 @@
 /**
  * The corner workstation's production flow (moved out of IsoArenaCanvas.tsx, REFACTOR_MAP area 4):
- * copy the camera card to the laptop → print onto magnet sheets → cut on the guillotine.
+ * copy the camera card to the laptop (quick) → print onto magnet sheets (the long step, runs on its
+ * own while the photographer goes back to shooting — printQueue.ts) → cut the printed sheets.
  * The canvas owns the player, upgrades and supplies; this module only acts on them.
  */
 
 import { sound } from './sound';
 import { cardCopySec, cardLimits } from './cameraCard';
+import {
+  createPrintQueue,
+  enqueuePrint,
+  isPrinting,
+  photosInPrinter,
+  printRemainingSec,
+  printSecPerSheet,
+  stepPrint,
+} from './printQueue';
 import { consumePrint, planPrint, printBlockMessageHe, type SupplyState } from './supplies';
 import {
   calculateCardTransferTiming,
@@ -63,6 +73,42 @@ export interface WorkstationDeps {
 
 export function createWorkstationFlow(deps: WorkstationDeps) {
   const { player } = deps;
+  const printer = createPrintQueue();
+  const secPerSheet = () => printSecPerSheet(getWorkstationSpeedMultiplier(deps.upgrades().turbo_station));
+  const printerBusyHe = () =>
+    `🖨️ המדפסת עובדת — ${printer.sheets.length} דפים נשארו (${printRemainingSec(printer, secPerSheet()).toFixed(0)} שנ'). אפשר ללכת לצלם ולחזור לחתוך ✂️`;
+  /** Keep the printer animation fields in step with the queue (the renderer reads them). */
+  const syncPrinterAnim = () => {
+    const per = secPerSheet();
+    player.printerTotalSheets = printer.runSheets;
+    player.printerAnimDuration = printer.runSheets * per;
+    player.printerAnimTimer = printRemainingSec(printer, per);
+  };
+
+  /** Every frame: the printer keeps printing whether or not the photographer is at the station. */
+  const tickPrinter = (dt: number) => {
+    if (!isPrinting(printer)) return;
+    const out = stepPrint(printer, dt, secPerSheet());
+    for (const photos of out) {
+      player.uncutSheetsAtStation += photos;
+      sound.playMagnetPrint();
+      deps.spawnParticles(deps.workstationPos.x - 6, deps.workstationPos.y + 4, 14, '#38bdf8', 110, 42);
+    }
+    syncPrinterAnim();
+    if (out.length > 0 && !isPrinting(printer)) {
+      player.stationFeedbackText = `✅ ההדפסה הסתיימה — ${player.uncutSheetsAtStation} מגנטים מחכים לחיתוך ✂️`;
+      player.stationFeedbackTimer = 3;
+    }
+    if (out.length > 0) deps.emitHud();
+  };
+
+  const resetPrinter = () => {
+    printer.sheets = [];
+    printer.progress = 0;
+    printer.runSheets = 0;
+    printer.runDone = 0;
+    player.printerAnimTimer = 0;
+  };
 
   // Step 1 at Corner Workstation: put the camera down on the desk, card into the laptop,
   // and copy the photos. While the camera is on the desk the photographer can't shoot.
@@ -123,6 +169,11 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
         transferCardToComputer();
         return;
       }
+      if (isPrinting(printer)) {
+        player.stationFeedbackText = printerBusyHe();
+        player.stationFeedbackTimer = 2.4;
+        return;
+      }
       player.stationFeedbackText = 'אין תמונות במחשב! צלם אורחים והעבר את התמונות מהמצלמה 📸💾';
       player.stationFeedbackTimer = 2.2;
       sound.playDanceBump();
@@ -139,31 +190,19 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
       return;
     }
     const batch = plan.photos;
-    const speedMult = getWorkstationSpeedMultiplier(deps.upgrades().turbo_station);
-    const job = calculateWorkstationJobTiming(batch, speedMult);
-
     player.photosOnComputer -= batch;
     deps.setSupplies(consumePrint(deps.getSupplies(), plan.sheets, Math.random()));
-    player.uncutSheetsAtStation += batch;
-    player.printerAnimDuration = job.totalDurationSec;
-    player.printerAnimTimer = job.totalDurationSec;
-    player.printerTotalSheets = job.sheetCount;
-    player.stationActionTimer = job.totalDurationSec;
-    const sheetIntervalMs = Math.max(120, Math.round(job.secondsPerSheet * 1000));
-    for (let s = 0; s < job.sheetCount; s++) {
-      deps.scheduleTimeout(() => {
-        sound.playMagnetPrint();
-        deps.spawnParticles(deps.workstationPos.x - 6, deps.workstationPos.y + 4, 14, '#38bdf8', 110, 42);
-      }, s * sheetIntervalMs);
-    }
+    const sheets = enqueuePrint(printer, batch);
+    syncPrinterAnim();
+    sound.playDanceBump();
 
-    player.stationFeedbackText = `🖨️ מדפיס ${job.sheetCount} דפי מגנט (${batch} תמונות · ${job.totalDurationSec.toFixed(1)} שנ')! לחץ [E] לחיתוך! ✂️`;
+    player.stationFeedbackText = `🖨️ נשלחו ${batch} תמונות להדפסה (${sheets} דפים · ${printRemainingSec(printer, secPerSheet()).toFixed(0)} שנ'). קח את המצלמה ולך לצלם — חזור לחתוך כשהדפים יוצאים ✂️`;
     if (plan.limitedBy) {
       player.stationFeedbackText += ` · ${player.photosOnComputer} תמונות נשארו במחשב — ${printBlockMessageHe(plan.limitedBy)}`;
     } else if (deps.getSupplies().jammed) {
       player.stationFeedbackText += ' · ⚠️ המדפסת נתקעה בסוף ההדפסה — צריך ערכת תיקון מהרכב 🚗';
     }
-    player.stationFeedbackTimer = Math.max(3.2, job.totalDurationSec + 1.8);
+    player.stationFeedbackTimer = 4;
     deps.emitHud();
   };
 
@@ -173,6 +212,11 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
     if (player.uncutSheetsAtStation <= 0) {
       if (player.photosOnComputer > 0 || player.photosInCamera > 0) {
         developAtWorkstation();
+        return;
+      }
+      if (isPrinting(printer)) {
+        player.stationFeedbackText = printerBusyHe();
+        player.stationFeedbackTimer = 2.4;
         return;
       }
       player.stationFeedbackText = 'אין דפי מגנט לחיתוך! פתח קודם תמונות במדפסת התרמית 🖨️';
@@ -221,5 +265,14 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
     deps.emitHud();
   };
 
-  return { transferCardToComputer, finishCardTransfer, developAtWorkstation, cutAtWorkstation };
+  return {
+    transferCardToComputer,
+    finishCardTransfer,
+    developAtWorkstation,
+    cutAtWorkstation,
+    tickPrinter,
+    resetPrinter,
+    /** Photos still inside the printer (for the HUD). */
+    photosPrinting: () => photosInPrinter(printer),
+  };
 }

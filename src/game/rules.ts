@@ -1280,7 +1280,7 @@ export function computePhotographerPose(params: {
 /** Fixed overhead of inserting the card / mounting it on the laptop. */
 export const CARD_TRANSFER_BASE_SEC = 0.6;
 /** Copy time per photo. */
-export const CARD_TRANSFER_SEC_PER_PHOTO = 0.12;
+export const CARD_TRANSFER_SEC_PER_PHOTO = 0.07;
 
 /**
  * How long copying the camera's card to the laptop takes. The turbo-station upgrade
@@ -1320,8 +1320,8 @@ export function shouldPickUpCameraFromDesk(params: {
 export type WorkstationActionKind = 'busy_transfer' | 'cut' | 'print' | 'transfer' | 'none';
 
 /**
- * Which job the [E] action starts at the workstation. Finishing work further down the
- * pipeline comes first: cut ready sheets → print transferred photos → copy the camera card.
+ * Which job the [E] action starts at the workstation. Printing is the long job and runs on its own,
+ * so it starts first: print transferred photos → cut the sheets that are out → copy the camera card.
  */
 export function chooseWorkstationAction(state: {
   isTransferring: boolean;
@@ -1329,9 +1329,9 @@ export function chooseWorkstationAction(state: {
   photosOnComputer: number;
   photosInCamera: number;
 }): WorkstationActionKind {
+  if (state.photosOnComputer > 0 && !state.isTransferring) return 'print';
   if (state.uncutSheetsAtStation > 0) return 'cut';
   if (state.isTransferring) return 'busy_transfer';
-  if (state.photosOnComputer > 0) return 'print';
   if (state.photosInCamera > 0) return 'transfer';
   return 'none';
 }

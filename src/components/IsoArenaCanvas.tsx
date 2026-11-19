@@ -1169,7 +1169,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     };
 
     // Transfer → print → cut at the corner workstation (workstationFlow.ts)
-    const { transferCardToComputer, finishCardTransfer, developAtWorkstation, cutAtWorkstation } = createWorkstationFlow({
+    const { transferCardToComputer, finishCardTransfer, developAtWorkstation, cutAtWorkstation, tickPrinter, resetPrinter } = createWorkstationFlow({
       player,
       workstationPos: WORKSTATION_POS,
       cutterPos: CUTTER_STAND_POS,
@@ -1906,7 +1906,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.standUpCooldown = 0;
       player.isNearBoard = false;
       player.stationActionTimer = 0;
-      player.printerAnimTimer = 0;
+      resetPrinter();
       player.cutterAnimTimer = 0;
       player.stationActionStep = 0;
       player.stationFeedbackText = null;
@@ -2523,9 +2523,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       if (player.stationActionTimer > 0) {
         player.stationActionTimer = Math.max(0, player.stationActionTimer - dt);
       }
-      if (player.printerAnimTimer > 0) {
-        player.printerAnimTimer = Math.max(0, player.printerAnimTimer - dt);
-      }
+      tickPrinter(dt); // the printer works on its own (printQueue.ts)
       if (player.transferAnimTimer > 0) {
         player.transferAnimTimer = Math.max(0, player.transferAnimTimer - dt);
         if (player.transferAnimTimer === 0) finishCardTransfer();
@@ -4663,7 +4661,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             const badgeTitle = isTransferringNow
               ? `💾 → 💻 ${player.transferBatch} (${player.transferAnimTimer.toFixed(1)}s)`
               : isPrintingNow
-              ? `🖨️ ${pProg.currentSheet}/${player.printerTotalSheets} (${player.printerAnimTimer.toFixed(1)}s)`
+              ? `🖨️ ${pProg.currentSheet}/${player.printerTotalSheets} (${player.printerAnimTimer.toFixed(0)}s)${player.uncutSheetsAtStation > 0 ? ` · ✂️ [E] ${player.uncutSheetsAtStation}` : ''}`
               : isCuttingNow
               ? `✂️ ${cProg.currentSheet}/${player.cutterTotalSheets} (${player.cutterAnimTimer.toFixed(1)}s)`
               : player.uncutSheetsAtStation > 0

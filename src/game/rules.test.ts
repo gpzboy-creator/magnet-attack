@@ -568,7 +568,7 @@ test('card transfer timing scales with photo count and turbo upgrade', () => {
   const four = calculateCardTransferTiming(4);
   const twelve = calculateCardTransferTiming(12);
   assert.ok(twelve.totalDurationSec > four.totalDurationSec);
-  assert.ok(Math.abs(four.totalDurationSec - (0.6 + 4 * 0.12)) < 0.01);
+  assert.ok(Math.abs(four.totalDurationSec - (0.6 + 4 * 0.07)) < 0.01);
   assert.ok(calculateCardTransferTiming(12, 2).totalDurationSec < twelve.totalDurationSec);
 });
 
@@ -581,12 +581,13 @@ test('camera is picked up from the desk only after the copy, off the chair, at t
   assert.equal(shouldPickUpCameraFromDesk({ ...base, cameraOnDesk: false }), false);
 });
 
-test('workstation [E] picks cut > print > transfer, and reports a running copy', () => {
+test('workstation [E] picks print > cut > transfer, and reports a running copy', () => {
   const idle = { isTransferring: false, uncutSheetsAtStation: 0, photosOnComputer: 0, photosInCamera: 0 };
   assert.equal(chooseWorkstationAction(idle), 'none');
   assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 5 }), 'transfer');
   assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 5, photosOnComputer: 3 }), 'print');
-  assert.equal(chooseWorkstationAction({ ...idle, photosOnComputer: 3, uncutSheetsAtStation: 2 }), 'cut');
+  assert.equal(chooseWorkstationAction({ ...idle, photosOnComputer: 3, uncutSheetsAtStation: 2 }), 'print');
+  assert.equal(chooseWorkstationAction({ ...idle, photosInCamera: 3, uncutSheetsAtStation: 2 }), 'cut');
   assert.equal(chooseWorkstationAction({ ...idle, isTransferring: true, photosOnComputer: 3 }), 'busy_transfer');
 });
 
