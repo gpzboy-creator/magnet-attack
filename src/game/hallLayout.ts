@@ -1,8 +1,9 @@
 /**
  * The hall's dining layout (Shahar, 19.11 — approved sketch): the dance floor stays in the middle,
  * the bar runs across between the dance floor and the dining area, and 7 round tables (8 seats
- * each) stand in two staggered rows — 4 then 3 — symmetric about the hall's middle line, on the
- * side away from the DJ and the magnet station (screen left).
+ * each) stand in two staggered rows — 4 then 3 — symmetric about the hall's middle line, in front of
+ * the dance floor opposite the DJ (screen down-left); the rows and the bar run along the screen's
+ * down-right diagonal, like the approved sketch. Rows spread out (19.11: "more room between tables").
  * Pure geometry, tested in hallLayout.test.ts.
  */
 
@@ -12,8 +13,7 @@ export interface Pt {
 }
 
 /** Unit vectors: `toDining` points from the dance floor to the tables, `across` runs along the rows. */
-const S = Math.SQRT1_2;
-export const HALL_AXES = { toDining: { x: -S, y: S }, across: { x: S, y: S } } as const;
+export const HALL_AXES = { toDining: { x: 0, y: 1 }, across: { x: 1, y: 0 } } as const;
 
 export const HALL_LAYOUT = {
   /** Walkable hall disk (ARENA_RADIUS in the canvas) and the dance floor radius (hallPixelArt.ts). */
@@ -21,14 +21,14 @@ export const HALL_LAYOUT = {
   danceFloorRadius: 168,
   /** Round table: cloth radius, chair ring radius, and how far the table + chairs reach. */
   tableRadius: 26,
-  chairRing: 36,
-  reach: 44,
+  chairRing: 34,
+  reach: 42,
   rows: [
-    { dist: 255, across: [-150, -50, 50, 150] },
-    { dist: 330, across: [-100, 0, 100] },
+    { dist: 240, across: [-195, -65, 65, 195] },
+    { dist: 322, across: [-130, 0, 130] },
   ],
   /** The bar across the hall (stage 3): centre distance from the dance floor centre, length. */
-  bar: { dist: 195, length: 170, depth: 22 },
+  bar: { dist: 182, length: 170, depth: 16 },
 } as const;
 
 const at = (dist: number, across: number): Pt => ({

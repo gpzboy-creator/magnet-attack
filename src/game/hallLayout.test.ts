@@ -29,8 +29,13 @@ test('the bar sits between the dance floor and the front row', () => {
 });
 
 test('the layout is symmetric about the middle line', () => {
-  // mirror across the axis toDining: swap x and -y around... (x, y) → (-y, -x)
-  for (const t of HALL_TABLES) assert.ok(HALL_TABLES.some((o) => Math.abs(o.x + t.y) <= 1 && Math.abs(o.y + t.x) <= 1));
+  // the middle line runs along toDining (world y): mirror (x, y) → (-x, y)
+  for (const t of HALL_TABLES) assert.ok(HALL_TABLES.some((o) => Math.abs(o.x + t.x) <= 1 && Math.abs(o.y - t.y) <= 1));
+});
+
+test('there is a walkway between neighbouring tables', () => {
+  for (const a of HALL_TABLES)
+    for (const b of HALL_TABLES) if (a.id < b.id) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 2 * L.reach + 16, `${a.id}/${b.id}`);
 });
 
 test('every seat faces its table and uses a matching chair view', () => {
