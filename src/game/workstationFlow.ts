@@ -91,7 +91,11 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
     if (!isPrinting(printer)) return;
     const out = stepPrint(printer, dt, secPerSheet());
     for (const photos of out) {
-      player.uncutSheetsAtStation += photos;
+      // standing at the cutter: a sheet that comes out goes straight under the blade (Shahar, 19.11)
+      if (player.atCutter) {
+        enqueuePrint(cutter, photos);
+        syncCutterAnim();
+      } else player.uncutSheetsAtStation += photos;
       sound.playMagnetPrint();
       deps.spawnParticles(deps.workstationPos.x - 6, deps.workstationPos.y + 4, 14, '#38bdf8', 110, 42);
     }
