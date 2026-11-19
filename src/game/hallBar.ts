@@ -1,8 +1,8 @@
 /**
- * The hall bar (stage 3 of the hall redesign, Shahar 19.11): a long wooden counter with a marble top
- * standing across the hall between the dance floor and the front row of tables (hallLayout.ts
- * HALL_BAR). The X-panel front faces the tables (+y), where guests stand; two bartenders work behind
- * it on the dance floor side, like the reception garden bar. Pure geometry, tested in hallBar.test.ts.
+ * The hall bar (Shahar 19.11): a long wooden counter with a marble top on the left side of the
+ * dance floor (hallLayout.ts HALL_BAR), its long side along world y. The X-panel front faces the
+ * dance floor (+x), where the dancers come for drinks; two bartenders work behind it with their
+ * backs to the green wall. Pure geometry, tested in hallBar.test.ts.
  */
 
 import { HALL_BAR, HALL_LAYOUT, type Pt } from './hallLayout.ts';
@@ -13,26 +13,26 @@ const c = HALL_BAR.center;
 
 /** Floor footprint of the counter — also its collision box. */
 export const HALL_BAR_BOX = {
-  minX: c.x - length / 2,
-  maxX: c.x + length / 2,
-  minY: c.y - depth / 2,
-  maxY: c.y + depth / 2,
+  minX: c.x - depth / 2,
+  maxX: c.x + depth / 2,
+  minY: c.y - length / 2,
+  maxY: c.y + length / 2,
 } as const;
 
-/** Spots where guests stand at the bar: four along the front (table side), one at each end. */
+/** Spots where guests stand at the bar: four along the front (dance floor side), one at each end. */
 export const BAR_GUEST_SPOTS: Pt[] = [
-  { x: c.x - 36, y: HALL_BAR_BOX.maxY + 10 },
-  { x: c.x - 12, y: HALL_BAR_BOX.maxY + 10 },
-  { x: c.x + 12, y: HALL_BAR_BOX.maxY + 10 },
-  { x: c.x + 36, y: HALL_BAR_BOX.maxY + 10 },
-  { x: HALL_BAR_BOX.minX - 11, y: c.y + 4 },
-  { x: HALL_BAR_BOX.maxX + 11, y: c.y + 4 },
+  { x: HALL_BAR_BOX.maxX + 10, y: c.y - 36 },
+  { x: HALL_BAR_BOX.maxX + 10, y: c.y - 12 },
+  { x: HALL_BAR_BOX.maxX + 10, y: c.y + 12 },
+  { x: HALL_BAR_BOX.maxX + 10, y: c.y + 36 },
+  { x: c.x + 4, y: HALL_BAR_BOX.minY - 11 },
+  { x: c.x + 4, y: HALL_BAR_BOX.maxY + 11 },
 ];
 
-/** Where waiters pick up drinks: just past each end of the counter. */
+/** Where waiters pick up drinks: just past each end of the counter, on the bartenders' side. */
 export const BAR_PICKUP_SPOTS: Pt[] = [
-  { x: HALL_BAR_BOX.minX - 12, y: HALL_BAR_BOX.minY + 2 },
-  { x: HALL_BAR_BOX.maxX + 12, y: HALL_BAR_BOX.minY + 2 },
+  { x: HALL_BAR_BOX.minX + 2, y: HALL_BAR_BOX.minY - 12 },
+  { x: HALL_BAR_BOX.minX + 2, y: HALL_BAR_BOX.maxY + 12 },
 ];
 
 /** The point on the counter a guest at `spot` faces (nearest point of the footprint). */
@@ -43,8 +43,8 @@ export function barFacePoint(spot: Pt): Pt {
   };
 }
 
-/** Where the bartenders work: a strip behind the counter (dance floor side). */
-export const HALL_BARTENDER_STATIONS: Pt[] = [-66, -42, -18, 18, 42, 66].map((dx) => ({ x: c.x + dx, y: HALL_BAR_BOX.minY - 9 }));
+/** Where the bartenders work: a strip behind the counter (wall side). */
+export const HALL_BARTENDER_STATIONS: Pt[] = [-66, -42, -18, 18, 42, 66].map((dy) => ({ x: HALL_BAR_BOX.minX - 9, y: c.y + dy }));
 
 /** Bartender `i` (0 or 1) at time `t`: walks between stations in their half, then shakes / pours / serves. */
 export function hallBartenderPose(i: number, t: number): Pt & { action: BartenderAction } {
@@ -53,7 +53,7 @@ export function hallBartenderPose(i: number, t: number): Pt & { action: Bartende
   const shifted = t + i * 1.9;
   const cycle = Math.floor(shifted / period);
   const local = shifted - cycle * period;
-  // bartender 0 works the left half, bartender 1 the right half, so they never cross
+  // bartender 0 works the −y half, bartender 1 the +y half, so they never cross
   const order = i === 0 ? [0, 1, 2, 1] : [2, 1, 0, 1];
   const pick = (k: number) => half[order[((k % 4) + 4) % 4]];
   const from = pick(cycle - 1);

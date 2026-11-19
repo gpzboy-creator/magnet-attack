@@ -31,7 +31,7 @@ React + TypeScript + Vite, ציור ישיר על **Canvas2D** — אין מנו
 | `public/assets/aistudio/`, `public/assets/characters/` | ספרייטים (PixelLab ואחרים) | **שם קובץ חדש בכל שינוי תוכן** (קאש של GitHub Pages) |
 | `tools/*.py` | עיבוד ספרייטים (חיתוך, מראה, גיליונות) | כל נכס שעבר עיבוד — עם הסקריפט שלו |
 
-מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts`, `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה), `venueRooms.ts` (חדר חתן וכלה + שירותים מדרום ללובי), `coupleSuite.ts` (הזוג בחדר הכלה ויציאה לאולם), `workstationFlow.ts` + `printQueue.ts` (עמדת המגנטים: העברה קצרה, הדפסה ארוכה שרצה ברקע, חיתוך של דפים מוכנים), `hallBar.ts` (בר האולם: טביעת רגל, מקומות אורחים וברמנים; ציור בפרוסות לפי x ב-`render/hallBar.ts`), `ceremonyPhase.ts` (טקס החופה: הסתדרות בשביל, כניסת החתן ואז הכלה עם ההורים, סגירת השביל, כיסאות ומשולש).
+מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts`, `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה), `venueRooms.ts` (חדר חתן וכלה + שירותים מדרום ללובי), `coupleSuite.ts` (הזוג בחדר הכלה ויציאה לאולם), `workstationFlow.ts` + `printQueue.ts` (עמדת המגנטים: העברה קצרה, הדפסה ארוכה שרצה ברקע, חיתוך של דפים מוכנים), `hallBar.ts` (בר האולם: טביעת רגל, מקומות אורחים וברמנים; ציור בפרוסות לפי y ב-`render/hallBar.ts`), `ceremonyPhase.ts` (טקס החופה: הסתדרות בשביל, כניסת החתן ואז הכלה עם ההורים, סגירת השביל, כיסאות ומשולש).
 
 ## פקודות
 
@@ -99,7 +99,7 @@ npm run build          # vite build → dist/
 | לוח המגנטים (חצובה) | 96, −22 | `TRIPOD_BOARD_POS` |
 | עמדת המגנטים | 265, −262 (פינה ימנית-אחורית) | `WORKSTATION_POS`, `render/workstationDesk.ts` |
 | 7 שולחנות עגולים | שורות y=240 (x ±65, ±195) ו-y=322 (x 0, ±130) | `hallLayout.ts` |
-| בר האולם (PixelLab) | x −85…85, y 168.5–197.5 (מרכז 0, 183); ברמנים מאחור (צד הרחבה), אורחים מלפנים | `hallLayout.ts` `HALL_BAR`, `hallBar.ts`, `render/hallBar.ts` |
+| בר האולם (PixelLab) | x −229…−200, y −85…85 (מרכז −214.5, 0), משמאל לרחבה לאורך y; ברמנים בגב לקיר, אורחים בצד הרחבה | `hallLayout.ts` `HALL_BAR`, `hallBar.ts`, `render/hallBar.ts` |
 | יציאה מהאולם ללובי | x 250–480, y 205–268 | `venueOutside.ts` `HALL_EXIT` |
 | לובי | x 470–660, y 100–370 | `LOBBY` |
 | מבואת שירותים + נשים/גברים/נגישים | מבואה x 220–502, y 452–506; חדרים מדרום לה; נגישים x 450–496, y 392–446 | `venueRooms.ts` |

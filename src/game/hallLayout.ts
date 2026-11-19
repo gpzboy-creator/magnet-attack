@@ -1,9 +1,9 @@
 /**
  * The hall's dining layout (Shahar, 19.11 — approved sketch): the dance floor stays in the middle,
- * the bar runs across between the dance floor and the dining area, and 7 round tables (8 seats
+ * the bar stands on the dance floor's left side (by the green wall), and 7 round tables (8 seats
  * each) stand in two staggered rows — 4 then 3 — symmetric about the hall's middle line, in front of
- * the dance floor opposite the DJ (screen down-left); the rows and the bar run along the screen's
- * down-right diagonal, like the approved sketch. Rows spread out (19.11: "more room between tables").
+ * the dance floor opposite the DJ (screen down-left); the rows run along the screen's down-right
+ * diagonal, like the approved sketch. Rows spread out (19.11: "more room between tables").
  * Pure geometry, tested in hallLayout.test.ts.
  */
 
@@ -28,11 +28,13 @@ export const HALL_LAYOUT = {
     { dist: 322, across: [-130, 0, 130] },
   ],
   /**
-   * The bar across the hall (stage 3, PixelLab hall-bar.png): centre distance from the dance floor
-   * centre, length and depth — the sprite's measured footprint at 170 long (≈ 3.7 m × 0.63 m).
-   * Centre at 183 (not 182) so the 29-deep counter clears the dance floor edge.
+   * The hall bar (PixelLab hall-bar-side.png): on the left side of the dance floor (screen
+   * up-left, world −x), its long side along world y, the bartenders' backs to the green wall and
+   * the counter facing the dancers (Shahar, 19.11 — moved from between the dance floor and the
+   * tables). `dist` = how far its centre is from the dance floor centre along −x.
+   * 170 × 29 ≈ 3.7 m × 0.63 m: the front face stands ≈ 32 units (0.7 m) off the dance floor edge.
    */
-  bar: { dist: 183, length: 170, depth: 29 },
+  bar: { dist: 214.5, length: 170, depth: 29 },
 } as const;
 
 const at = (dist: number, across: number): Pt => ({
@@ -45,8 +47,8 @@ export const HALL_TABLES: Array<Pt & { id: number }> = HALL_LAYOUT.rows
   .flatMap((r) => r.across.map((a) => at(r.dist, a)))
   .map((p, i) => ({ id: i + 1, ...p }));
 
-/** Where the bar stands (centre) and the direction it runs. */
-export const HALL_BAR = { center: at(HALL_LAYOUT.bar.dist, 0), along: HALL_AXES.across };
+/** Where the bar stands (centre) and the direction it runs (world y). */
+export const HALL_BAR = { center: { x: -HALL_LAYOUT.bar.dist, y: 0 }, along: HALL_AXES.toDining };
 
 export type ChairView = 'front' | 'frontMirror' | 'back' | 'backMirror';
 

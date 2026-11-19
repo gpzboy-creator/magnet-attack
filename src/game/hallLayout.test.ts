@@ -22,10 +22,17 @@ test('tables (with chairs) do not overlap each other', () => {
     for (const b of HALL_TABLES) if (a.id < b.id) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 2 * L.reach, `${a.id}/${b.id}`);
 });
 
-test('the bar sits between the dance floor and the front row', () => {
-  const d = Math.hypot(HALL_BAR.center.x, HALL_BAR.center.y);
-  assert.ok(d - L.bar.depth / 2 > L.danceFloorRadius);
-  assert.ok(d + L.bar.depth / 2 < L.rows[0].dist - L.reach);
+test('the bar stands left of the dance floor, clear of the floor, the tables and the wall', () => {
+  const minX = HALL_BAR.center.x - L.bar.depth / 2;
+  const maxX = HALL_BAR.center.x + L.bar.depth / 2;
+  const halfLen = L.bar.length / 2;
+  assert.ok(maxX < -L.danceFloorRadius - 20, 'room for guests between the floor and the counter');
+  assert.ok(minX > -L.hallRadius, 'room for the bartenders behind it');
+  for (const t of HALL_TABLES) {
+    const dx = Math.max(minX - t.x, 0, t.x - maxX);
+    const dy = Math.max(-halfLen - t.y, 0, t.y - halfLen);
+    assert.ok(Math.hypot(dx, dy) > L.reach + 20, `table ${t.id} too close to the bar`);
+  }
 });
 
 test('the layout is symmetric about the middle line', () => {
