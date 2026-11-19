@@ -208,9 +208,13 @@ function label(ctx: CanvasRenderingContext2D, x: number, y: number, text: string
   ctx.restore();
 }
 
-const WALL_H = 30;
+/**
+ * No walls (Shahar, 19.11): each room is marked by a low gold-edged border on the floor instead,
+ * so the photographer and the couple inside are never hidden. Door frames and signs stay.
+ */
+const WALL_H = 3;
 const WALL_T = 3;
-const WALL = { top: '#e7ded3', faceY: '#bfb2a3', faceX: '#a89a8a' };
+const WALL = { top: '#c9a54a', faceY: '#8a6d2f', faceX: '#a3823b' };
 const GOLD = { top: '#c9a54a', faceY: '#8a6d2f', faceX: '#a3823b' };
 
 /** Floors (ground layer, under everything). */
@@ -246,6 +250,8 @@ export function drawRoomsGround(ctx: CanvasRenderingContext2D, ox: number, oy: n
     }
   }
   for (const d of DOORS) floor(ctx, ox, oy, d.r, '#b9a58a');
+  // the rooms' borders (instead of walls): a low gold curb on the floor
+  for (const s of WALL_SEGMENTS) box(ctx, ox, oy, s, WALL_H, WALL.top, WALL.faceY, WALL.faceX);
 }
 
 /** Wall segments around every room, with gaps where the doors are. */
@@ -283,7 +289,6 @@ export interface RoomDrawable {
 export function getRoomDrawables(ctx: CanvasRenderingContext2D, ox: number, oy: number, t: number): RoomDrawable[] {
   const at = (x: number, y: number) => worldToIso(x, y).y;
   const list: RoomDrawable[] = [];
-  for (const s of WALL_SEGMENTS) list.push({ sortY: at(s.maxX, s.maxY), draw: () => box(ctx, ox, oy, s, WALL_H, WALL.top, WALL.faceY, WALL.faceX) });
 
   // gold door frames with signs
   for (const d of DOORS) {
