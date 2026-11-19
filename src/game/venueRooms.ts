@@ -2,8 +2,8 @@
  * Back rooms laid out like a real event venue (Shahar, 19.11):
  *
  *   hall ── 🚻 restroom foyer ─┬─ ♀ women's room (5 stalls, island sinks, hand dryer, plant)
- *   (front edge, by the exit)  ├─ ♿ accessible restroom
- *                              └─ ♂ men's room   (5 stalls, island sinks, hand dryer, plant)
+ *   (front edge, by the exit)  ├─ ♂ men's room   (5 stalls, island sinks, hand dryer, plant)
+ *                              └─ ♿ accessible restroom (east end, by the lobby — where it always was)
  *   lobby ── 💍 bridal suite (vanity, sofa, flowers) — the bride & groom wait here before the
  *            chuppah and before the dancing.
  * The restrooms open straight off the hall (no long corridor); the kitchen stays at the back of house.
@@ -37,8 +37,9 @@ export const BRIDAL_SUITE: Rect = { minX: 558, maxX: 686, minY: 380, maxY: 620 }
 const HALL_APRON: Rect = { minX: 240, maxX: 440, minY: 220, maxY: 440 };
 const FOYER: Rect = { minX: 220, maxX: 502, minY: 452, maxY: 506 };
 const WOMEN: Rect = { minX: 220, maxX: 330, minY: 516, maxY: 730 };
-const ACCESSIBLE: Rect = { minX: 340, maxX: 382, minY: 516, maxY: 600 };
-const MEN: Rect = { minX: 392, maxX: 502, minY: 516, maxY: 730 };
+/** Where it always was (by the lobby), now opening onto the east end of the restroom foyer. */
+const ACCESSIBLE: Rect = { minX: 450, maxX: 496, minY: 392, maxY: 446 };
+const MEN: Rect = { minX: 342, maxX: 452, minY: 516, maxY: 730 };
 
 const ROOMS: Room[] = [
   { id: 'suite', r: BRIDAL_SUITE, kind: 'suite' },
@@ -59,8 +60,8 @@ const DOORS: Door[] = [
   { r: { minX: 300, maxX: 336, minY: FOYER.minY - 16, maxY: FOYER.minY + 6 }, axis: 'h', sign: { text: '🚻 שירותים', color: '#e0f2fe' } },
   { r: { minX: 607, maxX: 631, minY: LOBBY_FRONT_Y - 6, maxY: BRIDAL_SUITE.minY + 6 }, axis: 'h', sign: { text: '💍 חדר חתן וכלה', color: '#fbcfe8' } },
   { r: { minX: 263, maxX: 287, minY: FOYER.maxY - 6, maxY: WOMEN.minY + 6 }, axis: 'h', sign: { text: '♀ נשים', color: '#fbcfe8' } },
-  { r: { minX: 349, maxX: 373, minY: FOYER.maxY - 6, maxY: ACCESSIBLE.minY + 6 }, axis: 'h', sign: { text: '♿ נגישים', color: '#bfdbfe' } },
-  { r: { minX: 435, maxX: 459, minY: FOYER.maxY - 6, maxY: MEN.minY + 6 }, axis: 'h', sign: { text: '♂ גברים', color: '#bfdbfe' } },
+  { r: { minX: 461, maxX: 485, minY: ACCESSIBLE.maxY - 6, maxY: FOYER.minY + 6 }, axis: 'h', sign: { text: '♿ נגישים', color: '#bfdbfe' } },
+  { r: { minX: 385, maxX: 409, minY: FOYER.maxY - 6, maxY: MEN.minY + 6 }, axis: 'h', sign: { text: '♂ גברים', color: '#bfdbfe' } },
 ];
 
 export const ROOMS_WALKABLE: Rect[] = [HALL_APRON, ...ROOMS.map((rm) => rm.r), ...DOORS.map((d) => d.r)];
@@ -99,19 +100,19 @@ const PLACED: Placed[] = [
   { prop: 'flowers', minX: 664, maxY: 412 },
   // restroom foyer decor
   { prop: 'plant', minX: 226, maxY: 500 },
-  { prop: 'flowers', minX: 478, maxY: 500 },
+  { prop: 'flowers', minX: 488, maxY: 500 },
   // accessible restroom: a corner unit with its own grab bars and basin
-  { prop: 'accessible', minX: 342, maxY: 558 },
+  { prop: 'accessible', minX: 454, maxY: 442 },
   // women's room
   ...stallRow(224),
   { prop: 'island', minX: 284, maxY: 640 },
   { prop: 'dryer', minX: 306, maxY: 524, z: 30, onWall: true },
   { prop: 'plant', minX: 312, maxY: 726 },
   // men's room
-  ...stallRow(396),
-  { prop: 'island', minX: 456, maxY: 640 },
-  { prop: 'dryer', minX: 478, maxY: 524, z: 30, onWall: true },
-  { prop: 'plant', minX: 484, maxY: 726 },
+  ...stallRow(346),
+  { prop: 'island', minX: 406, maxY: 640 },
+  { prop: 'dryer', minX: 428, maxY: 524, z: 30, onWall: true },
+  { prop: 'plant', minX: 434, maxY: 726 },
 ];
 
 const footprint = (pl: Placed): Rect => {
