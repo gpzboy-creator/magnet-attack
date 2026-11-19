@@ -33,27 +33,23 @@ export function chairImg(sp: ChairSprite): HTMLImageElement | null {
   return img.complete && img.naturalWidth > 0 ? img : null;
 }
 
-export function drawChairSprite(
-  ctx: CanvasRenderingContext2D,
-  sp: ChairSprite,
-  sx: number,
-  sy: number,
-  clip?: Array<[number, number]>
-) {
+/** Draw a chair standing on screen point (sx, sy); `mirror` flips it (the other two facings). */
+export function drawChairSprite(ctx: CanvasRenderingContext2D, sp: ChairSprite, sx: number, sy: number, mirror = false) {
   const img = chairImg(sp);
   if (!img) return;
-  const x0 = sx - sp.ax * sp.s;
+  const w = img.width * sp.s;
+  const x0 = mirror ? sx - (img.width - sp.ax) * sp.s : sx - sp.ax * sp.s;
   const y0 = sy - sp.ay * sp.s;
   ctx.save();
-  if (clip) {
-    ctx.beginPath();
-    clip.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(x0 + px * sp.s, y0 + py * sp.s) : ctx.lineTo(x0 + px * sp.s, y0 + py * sp.s)));
-    ctx.closePath();
-    ctx.clip();
-  }
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, Math.round(x0), Math.round(y0), Math.round(img.width * sp.s), Math.round(img.height * sp.s));
+  if (mirror) {
+    ctx.translate(Math.round(x0 + w), 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, 0, Math.round(y0), Math.round(w), Math.round(img.height * sp.s));
+  } else {
+    ctx.drawImage(img, Math.round(x0), Math.round(y0), Math.round(w), Math.round(img.height * sp.s));
+  }
   ctx.restore();
 }
 

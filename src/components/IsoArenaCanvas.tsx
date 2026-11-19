@@ -69,16 +69,12 @@ import {
 import {
   BAR_GUEST_SPOTS,
   BAR_PICKUP_SPOTS,
-  DECOR_TABLES,
   ISLAND_BAR,
-  LONG_TABLE,
-  LONG_TABLE_SEATS,
   LOUNGE,
   RATTAN_HIGH_TABLES,
   drawBarShelfTower,
   drawBartender,
   drawCigaretteSmoke,
-  drawGhostChair,
   drawGoboProjections,
   drawHallCeiling,
   drawHallFloor,
@@ -133,6 +129,7 @@ import { createWorkstationFlow } from '../game/workstationFlow';
 import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { pushWorkstationChair } from '../render/workstationChair';
 import { pushHallTables } from '../render/hallTables';
+import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
   EventPhaseId,
@@ -367,13 +364,9 @@ const TABLE_SPEECH_BUBBLES = [
   '✨ חייכו!',
 ];
 
-// 4 Decorated Banquet Tables around the venue perimeter
-const BANQUET_TABLES: BanquetTableData[] = [
-  { id: 1, wx: -215, wy: -105, name: 'שולחן 1 · משפחת החתן', runnerColor: '#831843', wineColor: '#991b1b' },
-  { id: 2, wx: -235, wy: 75, name: 'שולחן 2 · חברים מהאוניברסיטה', runnerColor: '#1e3a8a', wineColor: '#ca8a04' },
-  { id: 3, wx: -175, wy: 220, name: 'שולחן 3 · משפחת הכלה', runnerColor: '#831843', wineColor: '#991b1b' },
-  { id: 4, wx: 125, wy: 195, name: 'שולחן 4 · החבר\'ה מהעבודה', runnerColor: '#14532d', wineColor: '#ca8a04' },
-];
+// 7 round tables, 8 seats each, in two staggered rows past the bar (hallLayout.ts)
+const TABLE_NAMES = ['משפחת החתן', 'משפחת הכלה', 'חברים מהצבא', 'חברים מהאוניברסיטה', 'החבר\'ה מהעבודה', 'דודים ובני דודים', 'חברי ילדות'];
+const BANQUET_TABLES: BanquetTableData[] = HALL_TABLES.map((t, i) => ({ id: t.id, wx: t.x, wy: t.y, name: `שולחן ${t.id} · ${TABLE_NAMES[i]}`, runnerColor: '#831843', wineColor: '#991b1b' }));
 
 // 4 Social Dancefloor Group Clusters so dancers dance near other people & partners
 const DANCE_CLUSTER_CENTERS = [
@@ -410,14 +403,8 @@ const CUTTER_STAND_POS = { x: WORKSTATION_POS.x + 28, y: WORKSTATION_POS.y + 38 
 // Solid floor objects the photographer can't walk through (world coords, matching the drawn footprints)
 const PLAYER_BODY_RADIUS = 9;
 const FLOOR_OBSTACLES: FloorObstacle[] = [
-  // Long banquet tables (gameplay + decorative)
-  ...[...BANQUET_TABLES.map((t) => ({ x: t.wx, y: t.wy })), ...DECOR_TABLES].map((t) => ({
-    kind: 'box' as const,
-    minX: t.x - LONG_TABLE.length / 2,
-    minY: t.y - LONG_TABLE.depth / 2,
-    maxX: t.x + LONG_TABLE.length / 2,
-    maxY: t.y + LONG_TABLE.depth / 2,
-  })),
+  // Round banquet tables (the chairs around them stay walkable)
+  ...BANQUET_TABLES.map((t) => ({ kind: 'circle' as const, x: t.wx, y: t.wy, r: HALL_LAYOUT.tableRadius })),
   // Uplit tree deck + velvet lounge
   { kind: 'circle', x: LOUNGE.treeX, y: LOUNGE.treeY, r: 22 },
   { kind: 'circle', x: LOUNGE.sofaX, y: LOUNGE.sofaY, r: 26 },
@@ -1498,12 +1485,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       //   * 2 guests (10%) are seated at banquet tables (Table 1 & Table 3)
       //   * 2 guests (10%) are approaching those tables trying to drag the seated guests to dance!
       // ======================================================================
-      // Seats along the long banquet tables (far side faces the viewer, near side faces away)
-      const tableSeatsTemplate = LONG_TABLE_SEATS.map((st) => ({
-        dx: st.dx,
-        dy: st.dy,
-        dir: st.dir as IsoDirection,
-      }));
+      // 8 seats around each round table, each guest facing the table centre (hallLayout.ts)
+      const tableSeatsTemplate = ROUND_TABLE_SEATS.map((st) => ({ dx: st.dx, dy: st.dy, dir: angleToIsoDirection(Math.atan2((st.face.x + st.face.y) / 2, st.face.x - st.face.y)) }));
 
       const totalGuests = 20;
       const baseId = nextGuestId;
@@ -2053,10 +2036,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       const seatedYOffset = isSeated ? 10 : 0;
 
-      // Clear acrylic ghost chair under a seated guest
-      if (isSeated) {
-        drawGhostChair(ctx, 0, 0, guest.direction !== 'NE' && guest.direction !== 'N' && guest.direction !== 'NW');
-      }
 
       const isFlashBlinded = (guest.flashTintTimer ?? 0) > 0;
       let headX = grooveSway * 0.6;
@@ -4262,7 +4241,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
 
       // 2B. Banquet tables (src/render/hallTables.ts)
-      pushHallTables(drawables, ctx, originX, originY, BANQUET_TABLES, guests, drawIsoBox, hallT);
+      pushHallTables(drawables, ctx, originX, originY, BANQUET_TABLES);
 
       // 2C. All-White Draped Chuppah with Baby's-Breath Crown, White Lounge Benches, Lanterns & Floral Pedestals (photos 7, 8, 9)
       // The chuppah's front post: redrawn over anyone standing behind it on the stage
