@@ -129,6 +129,7 @@ import { createWorkstationFlow } from '../game/workstationFlow';
 import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { pushWorkstationChair } from '../render/workstationChair';
 import { pushHallTables } from '../render/hallTables';
+import { pushReceptionBar } from '../render/receptionBar';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
@@ -141,7 +142,6 @@ import {
   HALL_EXIT,
   OUTSIDE_OBSTACLES,
   PLAYER_CAR,
-  RECEPTION_BAR,
   PARKED_CARS,
   PARKED_CAR_SPRITES,
   PLAYER_CAR_TRUNK_SPOT,
@@ -5259,17 +5259,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               },
             });
           }
-          // The reception garden's bar (PixelLab); depth = footprint centre: front (+x/+y) sides draw over it
-          {
-            const r = RECEPTION_BAR;
-            drawables.push({
-              sortY: worldToIso((r.minX + r.maxX) / 2, (r.minY + r.maxY) / 2).y,
-              draw: () => {
-                const img = propImgs.get('bar');
-                if (img) drawPropSprite(ctx, img, PROP_SPRITES.bar, originX, originY, r.minX, r.maxY);
-              },
-            });
-          }
+          // The reception garden's bar (PixelLab) — src/render/receptionBar.ts
+          pushReceptionBar(drawables, ctx, originX, originY, propImgs.get('bar') ?? null);
           // Lobby, courtyard and parking props (doors, plants, fountain, olive trees, lamps, signs)
           for (const d of getOutsideDrawables(ctx, originX, originY, discoBeatPhase / 2.8)) drawables.push(d);
         }
