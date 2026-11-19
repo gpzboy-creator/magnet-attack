@@ -85,7 +85,6 @@ import {
   drawHallWalls,
   drawHeldDrink,
   drawIslandBarPiece,
-  drawLongBanquetTable,
   drawRattanHighTable,
   drawUplitTree,
   drawVelvetLounge,
@@ -133,6 +132,7 @@ import { cardLimits } from '../game/cameraCard';
 import { createWorkstationFlow } from '../game/workstationFlow';
 import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { pushWorkstationChair } from '../render/workstationChair';
+import { pushHallTables } from '../render/hallTables';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
   EventPhaseId,
@@ -4261,39 +4261,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
 
-      // 2B. Long banquet tables (white cloth, flower ball + crystal candelabra), ghost chairs on empty seats
-      for (const tbl of BANQUET_TABLES) {
-        const tIso = worldToIso(tbl.wx, tbl.wy);
-        drawables.push({
-          sortY: tIso.y,
-          draw: () =>
-            drawLongBanquetTable(ctx, originX, originY, tbl.wx, tbl.wy, drawIsoBox, {
-              tableNumber: tbl.id * 7 + 1,
-              t: hallT,
-            }),
-        });
-        for (const seat of LONG_TABLE_SEATS) {
-          const sxw = tbl.wx + seat.dx;
-          const syw = tbl.wy + seat.dy;
-          const occupied = guests.some(
-            (g) => g.isSeated && Math.abs(g.x - sxw) < 5 && Math.abs(g.y - syw) < 5
-          );
-          if (occupied) continue;
-          const cIso = worldToIso(sxw, syw);
-          drawables.push({
-            sortY: cIso.y - 0.1,
-            draw: () => drawGhostChair(ctx, originX + cIso.x, originY + cIso.y, seat.dir === 'SW'),
-          });
-        }
-      }
-      // Decorative full tables to give the hall its real scale (empty: guests are only real, moving actors)
-      DECOR_TABLES.forEach((dt) => {
-        const dIso = worldToIso(dt.x, dt.y);
-        drawables.push({
-          sortY: dIso.y,
-          draw: () => drawLongBanquetTable(ctx, originX, originY, dt.x, dt.y, drawIsoBox, { tableNumber: dt.number, t: hallT }),
-        });
-      });
+      // 2B. Banquet tables (src/render/hallTables.ts)
+      pushHallTables(drawables, ctx, originX, originY, BANQUET_TABLES, guests, drawIsoBox, hallT);
 
       // 2C. All-White Draped Chuppah with Baby's-Breath Crown, White Lounge Benches, Lanterns & Floral Pedestals (photos 7, 8, 9)
       // The chuppah's front post: redrawn over anyone standing behind it on the stage
