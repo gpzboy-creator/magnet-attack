@@ -19,6 +19,7 @@ import {
 import { consumePrint, planPrint, printBlockMessageHe, type SupplyState } from './supplies';
 import {
   calculateCardTransferTiming,
+  PHOTOS_PER_SHEET,
   calculateWorkstationJobTiming,
   getWorkstationSpeedMultiplier,
   type PhotographerUpgradeLevels,
@@ -64,7 +65,6 @@ export interface WorkstationDeps {
   setSupplies(s: SupplyState): void;
   spawnParticles(x: number, y: number, count: number, color: string, speed: number, life: number): void;
   spawnPaperScraps(x: number, y: number, count?: number): void;
-  scheduleTimeout(fn: () => void, delayMs: number): void;
   /** Magnets were cut: score + combo chime. */
   onCut(batch: number): void;
   /** Push the HUD now. */
@@ -87,6 +87,7 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
 
   /** Every frame: the printer keeps printing whether or not the photographer is at the station. */
   const tickPrinter = (dt: number) => {
+    tickCutter(dt);
     if (!isPrinting(printer)) return;
     const out = stepPrint(printer, dt, secPerSheet());
     for (const photos of out) {
@@ -102,7 +103,52 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
     if (out.length > 0) deps.emitHud();
   };
 
+  /** The guillotine works the same way as the printer queue, but only while he stands at it. */
+  const cutter = createPrintQueue();
+  const cutSecPerSheet = () =>
+    calculateWorkstationJobTiming(PHOTOS_PER_SHEET, getWorkstationSpeedMultiplier(deps.upgrades().turbo_station)).secondsPerSheet;
+  const syncCutterAnim = () => {
+    const per = cutSecPerSheet();
+    player.cutterTotalSheets = cutter.runSheets;
+    player.cutterAnimDuration = cutter.runSheets * per;
+    player.cutterAnimTimer = printRemainingSec(cutter, per);
+  };
+  const tickCutter = (dt: number) => {
+    if (!isPrinting(cutter)) return;
+    if (!player.atCutter) {
+      // he walked off: the cutter stops, the rest waits at the station
+      const left = photosInPrinter(cutter);
+      cutter.sheets = [];
+      cutter.progress = 0;
+      player.uncutSheetsAtStation += left;
+      player.cutterAnimTimer = 0;
+      player.stationFeedbackText = `✂️ החיתוך נעצר — ${left} מגנטים מחכים בעמדה. יש לך ${player.cutMagnetsInHand} ביד 🧲`;
+      player.stationFeedbackTimer = 2.6;
+      deps.emitHud();
+      return;
+    }
+    const out = stepPrint(cutter, dt, cutSecPerSheet());
+    for (const photos of out) {
+      player.cutMagnetsInHand += photos;
+      deps.onCut(photos);
+      sound.playMagnetCutter();
+      deps.spawnPaperScraps(deps.workstationPos.x + 18, deps.workstationPos.y + 4, 18);
+      deps.spawnParticles(deps.workstationPos.x + 18, deps.workstationPos.y + 4, 14, '#22d3ee', 120, 40);
+    }
+    syncCutterAnim();
+    if (out.length > 0) {
+      if (!isPrinting(cutter)) {
+        player.stationFeedbackText = `✂️ טראח! ${player.cutMagnetsInHand} מגנטים ביד — רוץ ללוח והדבק [E]! 🧲`;
+        player.stationFeedbackTimer = 3;
+      }
+      deps.emitHud();
+    }
+  };
+
   const resetPrinter = () => {
+    cutter.sheets = [];
+    cutter.progress = 0;
+    player.cutterAnimTimer = 0;
     printer.sheets = [];
     printer.progress = 0;
     printer.runSheets = 0;
@@ -226,17 +272,12 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
       return;
     }
 
+    // Cut sheet by sheet: each sheet's magnets go into his hand as it is cut. Walking away stops
+    // the cutter; the sheets not cut yet wait at the station (Shahar, 19.11).
     const batch = player.uncutSheetsAtStation;
-    const speedMult = getWorkstationSpeedMultiplier(deps.upgrades().turbo_station);
-    const job = calculateWorkstationJobTiming(batch, speedMult);
     player.uncutSheetsAtStation = 0;
-    player.cutMagnetsInHand += batch;
-    player.cutterAnimDuration = job.totalDurationSec;
-    player.cutterAnimTimer = job.totalDurationSec;
-    player.cutterTotalSheets = job.sheetCount;
-    player.stationActionTimer = job.totalDurationSec;
-
-    deps.onCut(batch);
+    enqueuePrint(cutter, batch);
+    syncCutterAnim();
 
     // Get up from the chair and step over to the cutter (only when actually at the workstation)
     if (player.isNearStation) {
@@ -251,18 +292,8 @@ export function createWorkstationFlow(deps: WorkstationDeps) {
       player.standUpCooldown = Math.max(player.standUpCooldown, 0.5);
     }
 
-    const sheetIntervalMs = Math.max(120, Math.round(job.secondsPerSheet * 1000));
-    for (let s = 0; s < job.sheetCount; s++) {
-      // Chop sound lands when the blade slices (≈42% into each sheet), matching the full-cut pose
-      deps.scheduleTimeout(() => {
-        sound.playMagnetCutter();
-        deps.spawnPaperScraps(deps.workstationPos.x + 18, deps.workstationPos.y + 4, 18);
-        deps.spawnParticles(deps.workstationPos.x + 18, deps.workstationPos.y + 4, 14, '#22d3ee', 120, 40);
-      }, Math.round((s + 0.42) * sheetIntervalMs));
-    }
-
-    player.stationFeedbackText = `✂️ טראח! נחתכו ${batch} מגנטים (${job.sheetCount} דפים · ${job.totalDurationSec.toFixed(1)} שנ')! רוץ ללוח המגנטים והדבק [E]! 🧲`;
-    player.stationFeedbackTimer = Math.max(3.5, job.totalDurationSec + 1.8);
+    player.stationFeedbackText = `✂️ חותך ${cutter.runSheets} דפים (${printRemainingSec(cutter, cutSecPerSheet()).toFixed(0)} שנ'). זוז כדי לעצור ולחזור לצלם — מה שנחתך כבר ביד 🧲`;
+    player.stationFeedbackTimer = 3;
     deps.emitHud();
   };
 

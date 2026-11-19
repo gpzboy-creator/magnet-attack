@@ -1178,7 +1178,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       setSupplies: (s) => { supplies = s; },
       spawnParticles,
       spawnPaperScraps,
-      scheduleTimeout,
       onCut: (batch) => { score += batch * 80; bestScore = Math.max(bestScore, score); sound.playComboChime(combo + 1); },
       emitHud: () => { hudEmitTimer = 1; },
     });
@@ -2523,7 +2522,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       if (player.stationActionTimer > 0) {
         player.stationActionTimer = Math.max(0, player.stationActionTimer - dt);
       }
-      tickPrinter(dt); // the printer works on its own (printQueue.ts)
+      tickPrinter(dt); // the printer works on its own, the cutter while he stands at it (printQueue.ts)
       if (player.transferAnimTimer > 0) {
         player.transferAnimTimer = Math.max(0, player.transferAnimTimer - dt);
         if (player.transferAnimTimer === 0) finishCardTransfer();
@@ -2532,9 +2531,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         player.transferAnimTimer > 0 || player.printerAnimTimer > 0 || player.cutterAnimTimer > 0;
       player.seatedIdleTime =
         player.isSeatedAtStation && !stationJobRunning ? player.seatedIdleTime + dt : 0;
-      if (player.cutterAnimTimer > 0) {
-        player.cutterAnimTimer = Math.max(0, player.cutterAnimTimer - dt);
-      }
       if (chuppahCelebrateTimer > 0) {
         chuppahCelebrateTimer = Math.max(0, chuppahCelebrateTimer - dt);
       }
