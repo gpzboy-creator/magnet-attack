@@ -131,7 +131,7 @@ import * as mood from '../game/guestMood';
 import { createEntrance, startEntrance, stepEntrance } from '../game/coupleSuite';
 import { cardLimits } from '../game/cameraCard';
 import { createWorkstationFlow } from '../game/workstationFlow';
-import { drawWorkstationDesk } from '../render/workstationDesk';
+import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
   EventPhaseId,
@@ -388,14 +388,8 @@ const BOARD_INTERACTION_RADIUS = 85;
 
 // Far-Corner Magnet Production Workstation (עמדת מגנטים בפינת האולם רחוק מהאורחים ומהלוח: שולחן מלבני + מחשב נייד + מדפסת תרמית + ניירות הדבקה + חותך + כסא צלם)
 const WORKSTATION_POS = { x: 265, y: -262 }; // top-right corner of the hall (between the chuppah and the right-back wall)
-/** The desk's footprint (matches the drawn 116×50 table): solid, and the chair is only reachable from its front. */
-const WORKSTATION_DESK_BOX = {
-  kind: 'box' as const,
-  minX: WORKSTATION_POS.x - 70,
-  minY: WORKSTATION_POS.y - 28,
-  maxX: WORKSTATION_POS.x + 46,
-  maxY: WORKSTATION_POS.y + 22,
-};
+/** The folding table's footprint (render/workstationDesk.ts): solid, and the chair is only reachable from its front. */
+const WORKSTATION_DESK_BOX = { kind: 'box' as const, ...deskFootprint(WORKSTATION_POS) };
 const WORKSTATION_CHAIR_POS = { x: WORKSTATION_POS.x - 8, y: WORKSTATION_POS.y + 34 };
 const STATION_INTERACTION_RADIUS = 95;
 

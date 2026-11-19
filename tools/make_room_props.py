@@ -46,10 +46,11 @@ def measure(im):
     lx = bx - lx_; ly = rx_ - bx
     return dict(ax=round(lx_), ay=round(by - lx / 2), lx=round(lx), ly=round(ly), w=w, h=h)
 
-src, out = sys.argv[1], sys.argv[2]
-names = sys.argv[3:] or sorted(os.path.basename(f)[:-6] for f in glob.glob(f'{src}/*_0.png'))
-for n in names:
-    im = keep_big_parts(Image.open(f'{src}/{n}_0.png').convert('RGBA'))
-    im = im.crop(im.getbbox())
-    im.save(f'{out}/room-{n}.png')
-    print(n, measure(im))
+if __name__ == '__main__':
+    src, out = sys.argv[1], sys.argv[2]
+    names = sys.argv[3:] or sorted(os.path.basename(f)[:-6] for f in glob.glob(f'{src}/*_0.png'))
+    for n in names:
+        im = keep_big_parts(Image.open(f'{src}/{n}_0.png').convert('RGBA'))
+        im = im.crop(im.getbbox())
+        im.save(f'{out}/room-{n}.png')
+        print(n, measure(im))

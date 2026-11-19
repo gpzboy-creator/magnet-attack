@@ -46,6 +46,7 @@
 | `aistudio/room-island.png` | אי כיורים כפול עם ברזים (במרכז חדר השירותים). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a freestanding white marble double-sided sink island with chrome faucets…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
 | `aistudio/room-dryer.png` | מייבש ידיים על הקיר. PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a wall-mounted stainless steel hand dryer…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
 | `aistudio/room-plant.png` | עציץ קישוט (שירותים, מסדרון). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a decorative potted green plant in a white ceramic pot…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
+| `aistudio/station-table.png` | שולחן מתקפל לבן (שולחן העבודה בעמדת המגנטים, לפי תמונה ששחר שלח). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181), seed 7, מראה אופקית (הציר הארוך לאורך x) | "a single white plastic folding banquet table, long rectangular 6 foot table, smooth white top with rounded corners, dark gray metal folding legs, empty table top, isometric 3/4 top-down view…" | `tools/make_station_table.py`; `src/render/workstationDesk.ts` `STATION_TABLE` (s 0.56 ≈ 106×40, גובה ≈ 37) | 15 |
 | `aistudio/room-stall.png` | תא שירותים (משמש פעמיים). PixelLab `generate-with-style-v2`, רפרנס `car-closed.png` (270×181) | "a single restroom toilet stall cubicle with light grey partition walls and a closed grey door…" + "isometric 3/4 top-down view… single object, no floor, no shadow", seed 7 | `tools/make_room_props.py` (ניקוי נקודות, חיתוך, מדידה); `venueRooms.ts` `ROOM_SPRITES` | 15 |
 | `aistudio/dj-stage.png` | כנ"ל | "an empty raised wedding DJ stage platform… glowing cyan LED strip… two small steps", seed 7. **במראה אופקית** | `PROP_SPRITES.djStage`, scale 0.8 | 15 |
 | `aistudio/dj-console.png` | כנ"ל | "a modern DJ booth console table… LED front panel faces the viewer on the bottom-left side", seed 7 | `PROP_SPRITES.djConsole`, scale 0.6 | 15 |
@@ -60,7 +61,7 @@
 
 ## סה"כ יצירות PixelLab שנוצלו (נכון ל-17.11)
 
-~660 מתוך 2,000 (נשארו ~1,340 ב-18.11). בדיקת יתרה: `GET https://api.pixellab.ai/v2/balance`.
+~675 מתוך 2,000 (נשארו ~1,325 ב-19.11). בדיקת יתרה: `GET https://api.pixellab.ai/v2/balance`.
 
 ## הוספת נכס חדש — צ'ק-ליסט
 
