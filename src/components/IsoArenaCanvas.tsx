@@ -18,7 +18,6 @@ import {
   FloorObstacle,
   GUEST_ACTIVITY_COOLDOWN_SEC,
   calculateTargetGuestBreakdown,
-  calculateWorkstationJobTiming,
   clampDt,
   computeCombinedMovementVector,
   computeSimDt,
@@ -32,14 +31,12 @@ import {
   getUpgradeCost,
   getWaveConfig,
   getWorkstationSheetProgress,
-  getWorkstationSpeedMultiplier,
   isoToWorld,
   PLAYER_ACCEL_RATE,
   PLAYER_DASH_RATE,
   PLAYER_DECEL_RATE,
   approachVelocity,
   moveTowardPoint,
-  calculateCardTransferTiming,
   chooseWorkstationAction,
   shouldPickUpCameraFromDesk,
   computePhotographerPose,
@@ -132,7 +129,8 @@ import { createArrival } from '../game/arrivalPhase';
 import { drawPhaseOverlay, drawPoseRings, receptionLabelHe } from '../render/arrivalOverlay';
 import * as mood from '../game/guestMood';
 import { createEntrance, startEntrance, stepEntrance } from '../game/coupleSuite';
-import { cardCopySec, cardLimits } from '../game/cameraCard';
+import { cardLimits } from '../game/cameraCard';
+import { createWorkstationFlow } from '../game/workstationFlow';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
   EventPhaseId,
@@ -158,14 +156,11 @@ import {
   EMPTY_LOAD,
   SUPPLY,
   SupplyState,
-  consumePrint,
   createSupplies,
   deliverLoad,
   describeLoadHe,
   isEmptyLoad,
   loadFromCar,
-  planPrint,
-  printBlockMessageHe,
 } from '../game/supplies';
 import {
   CAMERA_HOLD_SEC,
@@ -1173,164 +1168,20 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       purchaseUpgrade(id);
     };
 
-    // Step 1 at Corner Workstation: put the camera down on the desk, card into the laptop,
-    // and copy the photos. While the camera is on the desk the photographer can't shoot.
-    const transferCardToComputer = () => {
-      if (player.transferAnimTimer > 0) {
-        player.stationFeedbackText = `💾 מעביר תמונות למחשב... (${player.transferAnimTimer.toFixed(1)} שנ')`;
-        player.stationFeedbackTimer = 1.6;
-        return;
-      }
-      if (player.photosInCamera <= 0) {
-        player.stationFeedbackText = 'אין תמונות במצלמה! צלם אורחים ברחבה ובשולחנות 📸';
-        player.stationFeedbackTimer = 2.2;
-        sound.playDanceBump();
-        return;
-      }
-
-      const batch = player.photosInCamera;
-      const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
-      const job = calculateCardTransferTiming(batch, speedMult);
-      const copySec = cardCopySec(job.totalDurationSec, batch, cardLimits(upgradeLevels.pro_sdcard).capacity, speedMult);
-
-      player.cameraOnDesk = true;
-      player.photosInCamera = 0; // card is in the laptop now
-      player.transferBatch = batch;
-      player.transferAnimDuration = copySec;
-      player.transferAnimTimer = copySec;
-      player.stationActionTimer = Math.max(player.stationActionTimer, copySec);
-      sound.playDanceBump();
-      spawnParticles(WORKSTATION_POS.x - 30, WORKSTATION_POS.y + 6, 10, '#4ade80', 90, 40);
-
-      player.stationFeedbackText = `💾 המצלמה על השולחן והכרטיס במחשב — מעביר ${batch} תמונות (${copySec.toFixed(1)} שנ'${copySec > job.totalDurationSec ? ' · כרטיס עמוס = איטי' : ''}). אי אפשר לצלם עכשיו!`;
-      player.stationFeedbackTimer = Math.max(2.6, copySec + 0.8);
-      hudEmitTimer = 1;
-    };
-
-    // Called when the copy finishes: photos are on the laptop, ready for the thermal printer
-    const finishCardTransfer = () => {
-      player.photosOnComputer += player.transferBatch;
-      player.transferBatch = 0;
-      sound.playComboChime(1);
-      player.stationFeedbackText = player.isSeatedAtStation
-        ? `✅ ${player.photosOnComputer} תמונות במחשב! לחץ [E] להדפסה 🖨️ · קום מהכסא כדי לקחת את המצלמה`
-        : `✅ ההעברה הסתיימה! קח את המצלמה מהשולחן 📷`;
-      player.stationFeedbackTimer = 3;
-      hudEmitTimer = 1;
-    };
-
-    // Step 2 at Corner Workstation: Print the transferred photos via the Thermal Printer onto magnetic sheets
-    // Timing: Every 4 photos = 1 sheet = 0.5 seconds (scaled by turbo_station upgrade)!
-    const developAtWorkstation = () => {
-      if (player.transferAnimTimer > 0) {
-        transferCardToComputer(); // shows the "still copying" message
-        return;
-      }
-      if (player.photosOnComputer <= 0) {
-        if (player.photosInCamera > 0) {
-          // Photos are still on the camera card → copy them to the laptop first
-          transferCardToComputer();
-          return;
-        }
-        player.stationFeedbackText = 'אין תמונות במחשב! צלם אורחים והעבר את התמונות מהמצלמה 📸💾';
-        player.stationFeedbackTimer = 2.2;
-        sound.playDanceBump();
-        return;
-      }
-
-      // Supplies: blank magnet sheets + toner, and the printer may be jammed
-      const plan = planPrint(supplies, player.photosOnComputer);
-      if (plan.blockedBy) {
-        player.stationFeedbackText = printBlockMessageHe(plan.blockedBy);
-        player.stationFeedbackTimer = 3;
-        sound.playDanceBump();
-        hudEmitTimer = 1;
-        return;
-      }
-      const batch = plan.photos;
-      const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
-      const job = calculateWorkstationJobTiming(batch, speedMult);
-
-      player.photosOnComputer -= batch;
-      supplies = consumePrint(supplies, plan.sheets, Math.random());
-      player.uncutSheetsAtStation += batch;
-      player.printerAnimDuration = job.totalDurationSec;
-      player.printerAnimTimer = job.totalDurationSec;
-      player.printerTotalSheets = job.sheetCount;
-      player.stationActionTimer = job.totalDurationSec;
-      const sheetIntervalMs = Math.max(120, Math.round(job.secondsPerSheet * 1000));
-      for (let s = 0; s < job.sheetCount; s++) {
-        scheduleTimeout(() => {
-          sound.playMagnetPrint();
-          spawnParticles(WORKSTATION_POS.x - 6, WORKSTATION_POS.y + 4, 14, '#38bdf8', 110, 42);
-        }, s * sheetIntervalMs);
-      }
-
-      player.stationFeedbackText = `🖨️ מדפיס ${job.sheetCount} דפי מגנט (${batch} תמונות · ${job.totalDurationSec.toFixed(1)} שנ')! לחץ [E] לחיתוך! ✂️`;
-      if (plan.limitedBy) {
-        player.stationFeedbackText += ` · ${player.photosOnComputer} תמונות נשארו במחשב — ${printBlockMessageHe(plan.limitedBy)}`;
-      } else if (supplies.jammed) {
-        player.stationFeedbackText += ' · ⚠️ המדפסת נתקעה בסוף ההדפסה — צריך ערכת תיקון מהרכב 🚗';
-      }
-      player.stationFeedbackTimer = Math.max(3.2, job.totalDurationSec + 1.8);
-      hudEmitTimer = 1;
-    };
-
-    // Step 2 at Corner Workstation: Cut the magnetic sheets using the KW-triO Blue Guillotine Cutter
-    // Timing: Every 4 photos = 1 sheet = 0.5 seconds (scaled by turbo_station upgrade)!
-    const cutAtWorkstation = () => {
-      if (player.uncutSheetsAtStation <= 0) {
-        if (player.photosOnComputer > 0 || player.photosInCamera > 0) {
-          developAtWorkstation();
-          return;
-        }
-        player.stationFeedbackText = 'אין דפי מגנט לחיתוך! פתח קודם תמונות במדפסת התרמית 🖨️';
-        player.stationFeedbackTimer = 2.2;
-        sound.playDanceBump();
-        return;
-      }
-
-      const batch = player.uncutSheetsAtStation;
-      const speedMult = getWorkstationSpeedMultiplier(upgradeLevels.turbo_station);
-      const job = calculateWorkstationJobTiming(batch, speedMult);
-      player.uncutSheetsAtStation = 0;
-      player.cutMagnetsInHand += batch;
-      player.cutterAnimDuration = job.totalDurationSec;
-      player.cutterAnimTimer = job.totalDurationSec;
-      player.cutterTotalSheets = job.sheetCount;
-      player.stationActionTimer = job.totalDurationSec;
-
-      score += batch * 80;
-      bestScore = Math.max(bestScore, score);
-      sound.playComboChime(combo + 1);
-
-      // Get up from the chair and step over to the cutter (only when actually at the workstation)
-      if (player.isNearStation) {
-        player.isSeatedAtStation = false;
-        player.atCutter = true;
-        player.x = CUTTER_STAND_POS.x;
-        player.y = CUTTER_STAND_POS.y;
-        player.vx = 0;
-        player.vy = 0;
-        player.direction = 'NE';
-        player.wasNearStation = true;
-        player.standUpCooldown = Math.max(player.standUpCooldown, 0.5);
-      }
-
-      const sheetIntervalMs = Math.max(120, Math.round(job.secondsPerSheet * 1000));
-      for (let s = 0; s < job.sheetCount; s++) {
-        // Chop sound lands when the blade slices (≈42% into each sheet), matching the full-cut pose
-        scheduleTimeout(() => {
-          sound.playMagnetCutter();
-          spawnPaperScraps(WORKSTATION_POS.x + 18, WORKSTATION_POS.y + 4, 18);
-          spawnParticles(WORKSTATION_POS.x + 18, WORKSTATION_POS.y + 4, 14, '#22d3ee', 120, 40);
-        }, Math.round((s + 0.42) * sheetIntervalMs));
-      }
-
-      player.stationFeedbackText = `✂️ טראח! נחתכו ${batch} מגנטים (${job.sheetCount} דפים · ${job.totalDurationSec.toFixed(1)} שנ')! רוץ ללוח המגנטים והדבק [E]! 🧲`;
-      player.stationFeedbackTimer = Math.max(3.5, job.totalDurationSec + 1.8);
-      hudEmitTimer = 1;
-    };
+    // Transfer → print → cut at the corner workstation (workstationFlow.ts)
+    const { transferCardToComputer, finishCardTransfer, developAtWorkstation, cutAtWorkstation } = createWorkstationFlow({
+      player,
+      workstationPos: WORKSTATION_POS,
+      cutterPos: CUTTER_STAND_POS,
+      upgrades: () => upgradeLevels,
+      getSupplies: () => supplies,
+      setSupplies: (s) => { supplies = s; },
+      spawnParticles,
+      spawnPaperScraps,
+      scheduleTimeout,
+      onCut: (batch) => { score += batch * 80; bestScore = Math.max(bestScore, score); sound.playComboChime(combo + 1); },
+      emitHud: () => { hudEmitTimer = 1; },
+    });
 
     // ======================================================================
     // GUEST PERSONALITIES — apply behavior events (dialogue, penalties, rewards)
