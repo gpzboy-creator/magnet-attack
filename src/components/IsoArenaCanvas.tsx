@@ -131,6 +131,7 @@ import * as mood from '../game/guestMood';
 import { createEntrance, startEntrance, stepEntrance } from '../game/coupleSuite';
 import { cardLimits } from '../game/cameraCard';
 import { createWorkstationFlow } from '../game/workstationFlow';
+import { drawWorkstationDesk } from '../render/workstationDesk';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
   EventPhaseId,
@@ -4427,60 +4428,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           const sx = originX + stationIso.x;
           const sy = originY + stationIso.y;
 
-          // Glowing LED Under-Table Floor Aura
-          const hasWorkstationTask =
-            player.photosInCamera > 0 ||
-            player.photosOnComputer > 0 ||
-            player.cameraOnDesk ||
-            player.uncutSheetsAtStation > 0;
-          const auraRadius = player.isNearStation ? 92 : hasWorkstationTask ? 76 : 58;
-          const auraGrad = ctx.createRadialGradient(sx, sy + 6, 10, sx, sy + 6, auraRadius);
-          if (player.uncutSheetsAtStation > 0) {
-            auraGrad.addColorStop(0, 'rgba(34, 211, 238, 0.48)');
-            auraGrad.addColorStop(1, 'rgba(34, 211, 238, 0)');
-          } else if (player.photosInCamera > 0 || player.isNearStation) {
-            auraGrad.addColorStop(0, 'rgba(251, 191, 36, 0.45)');
-            auraGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
-          } else {
-            auraGrad.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
-            auraGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
-          }
-          ctx.fillStyle = auraGrad;
-          ctx.beginPath();
-          ctx.ellipse(sx, sy + 6, auraRadius, auraRadius * 0.5, 0, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 1. Fitted Black & Gold Pleated Workstation Table Skirt
-          // Desk widened (116 wide) so the camera has room next to the laptop
-          drawIsoBox(
-            originX,
-            originY,
-            WORKSTATION_POS.x - 70,
-            WORKSTATION_POS.y - 28,
-            116,
-            50,
-            34,
-            '#1e293b',
-            '#0f172a',
-            '#1e1b4b',
-            '#f59e0b'
-          );
-
-          // Glowing Cyan/Amber LED Strip along the top edge of the workstation table
-          drawIsoBox(
-            originX,
-            originY,
-            WORKSTATION_POS.x - 67,
-            WORKSTATION_POS.y - 25,
-            110,
-            44,
-            2.5,
-            '#0f172a',
-            '#38bdf8',
-            '#f59e0b',
-            '#020617',
-            34
-          );
+          // Aura + table body (src/render/workstationDesk.ts)
+          drawWorkstationDesk(ctx, originX, originY, sx, sy, WORKSTATION_POS, player, drawIsoBox);
 
           // Compute live sheet-by-sheet animation progress
           const pProg = getWorkstationSheetProgress(
