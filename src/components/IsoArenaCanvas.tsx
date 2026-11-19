@@ -69,17 +69,12 @@ import {
 import {
   BAR_GUEST_SPOTS,
   BAR_PICKUP_SPOTS,
-  LOUNGE,
-  RATTAN_HIGH_TABLES,
   drawCigaretteSmoke,
   drawGoboProjections,
   drawHallCeiling,
   drawHallFloor,
   drawHallWalls,
   drawHeldDrink,
-  drawRattanHighTable,
-  drawUplitTree,
-  drawVelvetLounge,
   getMovingHeads,
 } from '../game/hallPixelArt';
 import {
@@ -123,6 +118,7 @@ import { deskFootprint, drawWorkstationDesk } from '../render/workstationDesk';
 import { pushWorkstationChair } from '../render/workstationChair';
 import { pushHallTables } from '../render/hallTables';
 import { pushReceptionBar } from '../render/receptionBar';
+import { LOUNGE_OBSTACLES, pushHallLounge } from '../render/hallLounge';
 import { ISLAND_BAR_OBSTACLE, islandBartenderSpots, pushIslandBar } from '../render/hallIslandBar';
 import { nextBarVisitDelay, sendGuestToBar, updateGuestAtBar } from '../game/hallBarVisits';
 import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
@@ -401,11 +397,8 @@ const PLAYER_BODY_RADIUS = 9;
 const FLOOR_OBSTACLES: FloorObstacle[] = [
   // Round banquet tables (the chairs around them stay walkable)
   ...BANQUET_TABLES.map((t) => ({ kind: 'circle' as const, x: t.wx, y: t.wy, r: HALL_LAYOUT.tableRadius })),
-  // Uplit tree deck + velvet lounge
-  { kind: 'circle', x: LOUNGE.treeX, y: LOUNGE.treeY, r: 22 },
-  { kind: 'circle', x: LOUNGE.sofaX, y: LOUNGE.sofaY, r: 26 },
-  // Rattan high tables along the green wall
-  ...RATTAN_HIGH_TABLES.map((t) => ({ kind: 'circle' as const, x: t.x, y: t.y, r: 14 })),
+  // Uplit tree deck, velvet lounge, rattan high tables (render/hallLounge.ts)
+  ...LOUNGE_OBSTACLES,
   // Square island bar (counter ring + shelf tower)
   ISLAND_BAR_OBSTACLE,
   // DJ stage (PixelLab set)
@@ -4024,24 +4017,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       const hallT = discoBeatPhase / 2.8;
 
-      // 2A-1. Lounge: uplit white-trunk tree on a wooden deck + curved velvet sofa, armchairs, rug
-      const treeIso = worldToIso(LOUNGE.treeX, LOUNGE.treeY);
-      drawables.push({
-        sortY: treeIso.y,
-        draw: () => drawUplitTree(ctx, originX, originY, LOUNGE.treeX, LOUNGE.treeY, hallT),
-      });
-      const loungeIso = worldToIso(LOUNGE.sofaX, LOUNGE.sofaY);
-      drawables.push({
-        sortY: loungeIso.y - 20,
-        draw: () => drawVelvetLounge(ctx, originX, originY, LOUNGE.sofaX, LOUNGE.sofaY),
-      });
-      for (const rt of RATTAN_HIGH_TABLES) {
-        const rtIso = worldToIso(rt.x, rt.y);
-        drawables.push({
-          sortY: rtIso.y,
-          draw: () => drawRattanHighTable(ctx, originX, originY, rt.x, rt.y),
-        });
-      }
+      // 2A-1. Lounge: uplit tree, velvet sofa, rattan high tables (render/hallLounge.ts)
+      pushHallLounge(drawables, ctx, originX, originY, hallT);
 
       // 2A-2. Square black island bar + bartender crew (render/hallIslandBar.ts)
       pushIslandBar(drawables, ctx, originX, originY, drawIsoBox, hallT);
