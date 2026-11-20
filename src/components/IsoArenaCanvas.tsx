@@ -12,7 +12,6 @@ import {
   PhotographerUpgradeLevels,
   UpgradeId,
   VipEventState,
-  WaiterActorState,
   angleToIsoDirection,
   CROWD_MOVE_INTERVAL_SEC,
   FloorObstacle,
@@ -117,10 +116,12 @@ import { pushHallTables } from '../render/hallTables';
 import { pushReceptionBar } from '../render/receptionBar';
 import { LOUNGE_OBSTACLES, pushHallLounge } from '../render/hallLounge';
 import { hallBartenderSpots, pushHallBar } from '../render/hallBar';
-import { BAR_GUEST_SPOTS, BAR_PICKUP_SPOTS, HALL_BAR_BOX } from '../game/hallBar';
+import { BAR_GUEST_SPOTS, HALL_BAR_BOX } from '../game/hallBar';
 import { updateGuestAtBar } from '../game/hallBarVisits';
 import { createGameState } from '../game/gameState';
 import { runSystems } from '../game/systems';
+import { createDrinkWaiters, trayBump, trayBumpMessage } from '../game/drinkWaiters';
+import { pushDrinkWaiters } from '../render/drinkWaiters';
 import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
@@ -988,14 +989,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let lastAimWY = 0;
     // Big floating score labels for whole-frame scoring (Hebrew)
     const frameLabels: Array<{ text: string; sub: string; x: number; y: number; life: number; color: string }> = [];
-    // Waiters run drinks: pick up at the bar → walk to a guest → serve → back to the bar
-    type DrinkWaiter = WaiterActorState & {
-      mode: 'to_bar' | 'loading' | 'to_guest' | 'serving';
-      targetGuestId: number | null;
-      timer: number;
-      carrying: boolean;
-    };
-    let waiters: DrinkWaiter[] = [];
     const state = createGameState(); // the state board (gameState.ts); areas move into it one by one
     let vipEvent: VipEventState | null = null;
     let vipEventSeq = 0;
@@ -1333,23 +1326,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       nextVipCooldown = 5.0;
 
       // Three waiters in black shirts + aprons, running drinks from the hall bar to the guests
-      waiters = [0, 1, 2].map((i) => {
-        const start = BAR_PICKUP_SPOTS[i % BAR_PICKUP_SPOTS.length];
-        return {
-          id: i + 1,
-          x: start.x - i * 6,
-          y: start.y + i * 6,
-          waypointIdx: 0,
-          waypoints: [],
-          speed: 60 + waveNum * 4 + i * 4,
-          trayItem: 'champagne' as const,
-          bumpCooldown: 0,
-          mode: 'loading' as const,
-          targetGuestId: null,
-          timer: 0.6 + i * 1.1,
-          carrying: false,
-        };
-      });
+      state.guests.waiters = createDrinkWaiters(waveNum);
       state.guests.barVisitTimer = 4;
       magnetLedger.clear();
 
@@ -2727,98 +2704,20 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           }
           player.partyJoy = mood.joyPercent(moodBook);
 
-          // Update Roaming Catering Waiters & Check Tray Bump
-          for (let wIdx = 0; wIdx < waiters.length; wIdx++) {
-            const wActor = waiters[wIdx];
-            wActor.bumpCooldown = Math.max(0, wActor.bumpCooldown - simDt);
-            if (wActor.mode === 'to_bar') {
-              const pick = BAR_PICKUP_SPOTS[wActor.id % BAR_PICKUP_SPOTS.length];
-              const mv = moveTowardPoint(wActor, pick, wActor.speed, simDt, 6);
-              wActor.x = mv.x;
-              wActor.y = mv.y;
-              if (mv.arrived) {
-                wActor.mode = 'loading';
-                wActor.timer = 0.9 + Math.random() * 0.8;
-              }
-            } else if (wActor.mode === 'loading') {
-              wActor.timer -= simDt;
-              if (wActor.timer <= 0) {
-                // Next guest without a drink that no other waiter is already serving
-                const candidates = guests.filter(
-                  (g) =>
-                    !g.seekingMagnet &&
-                    (g.drinkTimer ?? 0) <= 0 &&
-                    (g.guestActivity === 'seated' ||
-                      (g.guestActivity === 'dancing' && !g.isEnteringFloor)) &&
-                    !waiters.some((o) => o !== wActor && o.targetGuestId === g.id)
-                );
-                if (candidates.length > 0) {
-                  const tgt = candidates[Math.floor(Math.random() * candidates.length)];
-                  wActor.targetGuestId = tgt.id;
-                  wActor.carrying = true;
-                  wActor.trayItem = Math.random() < 0.5 ? 'champagne' : 'steak';
-                  wActor.mode = 'to_guest';
-                } else {
-                  wActor.timer = 1.2;
-                }
-              }
-            } else if (wActor.mode === 'to_guest') {
-              const tgt = guests.find((g) => g.id === wActor.targetGuestId);
-              if (!tgt || tgt.seekingMagnet || tgt.guestActivity === 'bar' || (tgt.drinkTimer ?? 0) > 0) {
-                wActor.mode = 'to_bar';
-                wActor.targetGuestId = null;
-              } else {
-                // Approach from the aisle side: seated guests from behind their chair, dancers from the side
-                const tbl = BANQUET_TABLES.find((tb) => tb.id === tgt.tableId);
-                const awayY =
-                  tgt.guestActivity === 'seated' && tbl ? (tgt.y < tbl.wy ? -12 : 12) : 6;
-                const mv = moveTowardPoint(
-                  wActor,
-                  { x: tgt.x + 10, y: tgt.y + awayY },
-                  wActor.speed,
-                  simDt,
-                  7
-                );
-                wActor.x = mv.x;
-                wActor.y = mv.y;
-                if (mv.arrived) {
-                  tgt.drinkTimer = 14 + Math.random() * 10;
-                  tgt.drinkKind = Math.floor(Math.random() * 4);
-                  if (!tgt.speechBubbleText && Math.random() < 0.5) {
-                    tgt.speechBubbleText = Math.random() < 0.5 ? '🥂 תודה!' : '🍷 לחיים!';
-                    tgt.wantsPhotoTimer = 1.3;
-                  }
-                  wActor.carrying = false;
-                  wActor.mode = 'serving';
-                  wActor.timer = 0.6;
-                }
-              }
-            } else {
-              wActor.timer -= simDt;
-              if (wActor.timer <= 0) {
-                wActor.mode = 'to_bar';
-                wActor.targetGuestId = null;
-              }
-            }
-            if (!player.isSeatedAtStation && wActor.bumpCooldown <= 0) {
-              const wdx = player.x - wActor.x;
-              const wdy = player.y - wActor.y;
-              const wDist = Math.hypot(wdx, wdy) || 1;
-              if (wDist < 24) {
-                wActor.bumpCooldown = 1.6;
-                player.bumpFlashTimer = 0.35;
-                cameraTrauma = Math.min(1, cameraTrauma + 0.25);
-                sound.playDanceBump();
-                spawnParticles(wActor.x, wActor.y, 12, '#fef08a', 110, 28);
-                player.x += (wdx / wDist) * 18;
-                player.y += (wdy / wDist) * 18;
-                player.stationFeedbackText =
-                  wActor.trayItem === 'champagne'
-                    ? '🍾 אופס! נתקלת במלצר השמפניה! היזהר מהמגשים באולם!'
-                    : '🍽️ אופס! נתקלת במלצר המנות! עקוף את המלצרים בריצה!';
-                player.stationFeedbackTimer = 2.2;
-              }
-            }
+          // Drink waiters (drinkWaiters.ts), then the tray bump check
+          state.guests.actors = guests; // bridge until the guest list itself moves to the state board
+          runSystems(state, simDt, 'beforeShooting');
+          for (const wActor of state.guests.waiters) {
+            const bump = trayBump(wActor, player);
+            if (!bump) continue;
+            player.bumpFlashTimer = 0.35;
+            cameraTrauma = Math.min(1, cameraTrauma + 0.25);
+            sound.playDanceBump();
+            spawnParticles(wActor.x, wActor.y, 12, '#fef08a', 110, 28);
+            player.x += bump.nx * 18;
+            player.y += bump.ny * 18;
+            player.stationFeedbackText = trayBumpMessage(wActor.trayItem);
+            player.stationFeedbackTimer = 2.2;
           }
 
           const stepDist = Math.hypot(player.vx * simDt, player.vy * simDt);
@@ -3026,7 +2925,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 for (const pose of hallBartenderSpots(hallNow)) {
                   if (isTargetInCone(cone, pose, 8)) subjects.push({ kind: 'staff' });
                 }
-                for (const w of waiters) {
+                for (const w of state.guests.waiters) {
                   if (isTargetInCone(cone, w, 8)) subjects.push({ kind: 'staff' });
                 }
                 if (isTargetInCone(cone, { x: -95, y: -255 }, 14)) subjects.push({ kind: 'dj' });
@@ -3202,8 +3101,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
-          state.guests.actors = guests; // bridge until the guest list itself moves to the state board
-          runSystems(state, simDt); // loop systems (systems.ts): bar visits
+          runSystems(state, simDt, 'beforeGuestUpdate'); // loop systems (systems.ts): bar visits
 
           // ====================================================================
           // UPDATE GUESTS (IN-PLACE SOCIAL DANCING, SPOT SWITCHING, RECRUITING & SEATED)
@@ -5042,73 +4940,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           for (const d of getOutsideDrawables(ctx, originX, originY, discoBeatPhase / 2.8)) drawables.push(d);
         }
 
-        // Queue Roaming Catering Waiters with Silver Trays
-        for (const wActor of waiters) {
-          const wIso = worldToIso(wActor.x, wActor.y);
-          drawables.push({
-            sortY: wIso.y,
-            draw: () => {
-              const sx = originX + wIso.x;
-              const sy = originY + wIso.y;
-              const bob = Math.sin(discoBeatPhase * 2.6 + wActor.id) * 2.2;
-
-              ctx.fillStyle = 'rgba(15, 23, 42, 0.45)';
-              ctx.beginPath();
-              ctx.ellipse(sx, sy, 12, 6, 0, 0, Math.PI * 2);
-              ctx.fill();
-
-              // Black trousers + black shirt + khaki apron (like the venue's waiters)
-              ctx.fillStyle = '#0b0b0e';
-              ctx.fillRect(sx - 6, sy - 18 + bob * 0.3, 5, 18);
-              ctx.fillRect(sx + 1, sy - 18 - bob * 0.3, 5, 18);
-              ctx.fillStyle = '#121216';
-              ctx.fillRect(sx - 9, sy - 38 + bob, 18, 20);
-              ctx.fillStyle = '#a1885f';
-              ctx.fillRect(sx - 7, sy - 24 + bob, 14, 12);
-              ctx.fillStyle = 'rgba(0,0,0,0.25)';
-              ctx.fillRect(sx - 7, sy - 24 + bob, 14, 1.5);
-
-              ctx.fillStyle = '#d6a27c';
-              ctx.strokeStyle = '#0f172a';
-              ctx.lineWidth = 1.4;
-              ctx.beginPath();
-              ctx.arc(sx, sy - 46 + bob, 7.2, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.stroke();
-              ctx.fillStyle = '#1e1612';
-              ctx.beginPath();
-              ctx.arc(sx, sy - 48 + bob, 7.4, Math.PI, Math.PI * 2);
-              ctx.fill();
-
-              // Arm up to the tray (only while carrying), otherwise at the side
-              ctx.strokeStyle = '#121216';
-              ctx.lineWidth = 3;
-              ctx.beginPath();
-              ctx.moveTo(sx + 8, sy - 34 + bob);
-              ctx.lineTo(wActor.carrying ? sx + 13 : sx + 10, wActor.carrying ? sy - 41 + bob : sy - 22 + bob);
-              ctx.stroke();
-
-              if (wActor.carrying) {
-                ctx.fillStyle = '#cbd5e1';
-                ctx.strokeStyle = '#475569';
-                ctx.lineWidth = 1.2;
-                ctx.beginPath();
-                ctx.ellipse(sx + 14, sy - 42 + bob, 10, 4.2, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-                // Three drinks on the tray
-                const cols = ['rgba(190,18,60,0.85)', 'rgba(254,240,138,0.9)', 'rgba(244,114,182,0.85)'];
-                cols.forEach((c, k) => {
-                  ctx.fillStyle = c;
-                  ctx.fillRect(sx + 8 + k * 4.5, sy - 50 + bob, 2.6, 5);
-                  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-                  ctx.lineWidth = 0.6;
-                  ctx.strokeRect(sx + 8 + k * 4.5, sy - 50 + bob, 2.6, 5);
-                });
-              }
-            },
-          });
-        }
+        // Drink waiters with their silver trays (render/drinkWaiters.ts)
+        pushDrinkWaiters(drawables, ctx, originX, originY, state.guests.waiters, discoBeatPhase);
       }
 
       // Camera flash rays are depth-sorted with actors, so a shot fired "into" the scene

@@ -111,6 +111,7 @@ export function updateGuestAtBar(guest: BarGoer, simDt: number) {
 /** Loop system: every few seconds a dancer walks to the bar for a drink (state.guests.barVisitTimer). */
 export const barVisitsSystem: GameSystem = {
   name: 'barVisits',
+  slot: 'beforeGuestUpdate',
   update(state: GameState, dt: number) {
     const g = state.guests;
     g.barVisitTimer -= dt;
