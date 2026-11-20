@@ -1,7 +1,10 @@
 {
-  "_comment": "Ratchet: these numbers may only go DOWN. After extracting code from a file, lower its budget to its new line count in the same commit. Checked by src/game/codeHealth.test.ts before every deploy.",
+  "_comment": "Ratchet: these numbers may only go DOWN. After extracting code from a file, lower its line budget (files) and its closure-state `let` count (stateLets) to the new numbers in the same commit. Checked by src/game/codeHealth.test.ts before every deploy.",
   "files": {
     "src/components/IsoArenaCanvas.tsx": 5594
   },
-  "maxLinesAnyOtherFile": 1600
+  "maxLinesAnyOtherFile": 1600,
+  "stateLets": {
+    "src/components/IsoArenaCanvas.tsx": 75
+  }
 }
