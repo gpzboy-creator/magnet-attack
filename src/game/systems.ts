@@ -7,6 +7,7 @@
  */
 
 import type { GameState } from './gameState.ts';
+import { barVisitsSystem } from './hallBarVisits.ts';
 
 export interface GameSystem {
   name: string;
@@ -14,7 +15,7 @@ export interface GameSystem {
 }
 
 /** The loop order. Keep it explicit: the order is part of the game's behaviour. */
-export const SYSTEMS: readonly GameSystem[] = [];
+export const SYSTEMS: readonly GameSystem[] = [barVisitsSystem];
 
 /** Run every system once, in order, on the same state and dt. */
 export function runSystems(state: GameState, dt: number, systems: readonly GameSystem[] = SYSTEMS) {

@@ -6,14 +6,24 @@
  * system in systems.ts. Topics that are still empty list what is expected to move into them.
  */
 
+import type { BarGoer } from './hallBarVisits.ts';
+
 /** The evening: event phase, clocks, score, waves. (still in IsoArenaCanvas.tsx) */
 export type EveningState = Record<string, never>;
 
 /** The photographer: position, camera card, dash, chair, carried load. (still in IsoArenaCanvas.tsx) */
 export type PhotographerState = Record<string, never>;
 
-/** The guests and what they do on their own: list, AI timers, bar visits. (still in IsoArenaCanvas.tsx) */
-export type GuestsState = Record<string, never>;
+/** The guests and what they do on their own. */
+export interface GuestsState {
+  /**
+   * TEMPORARY BRIDGE: the guest list itself still lives in IsoArenaCanvas.tsx (`guests`, ~80 uses).
+   * tick points this at it right before runSystems; it disappears when the guests topic moves here.
+   */
+  actors: BarGoer[];
+  /** Seconds until the next bar visit is considered (hallBarVisits.ts). */
+  barVisitTimer: number;
+}
 
 /** The magnet workstation and board: print queue, sheets, magnets on the board. (still in IsoArenaCanvas.tsx) */
 export type StationState = Record<string, never>;
@@ -34,7 +44,7 @@ export function createGameState(): GameState {
   return {
     evening: {},
     photographer: {},
-    guests: {},
+    guests: { actors: [], barVisitTimer: 4 },
     station: {},
     supplies: {},
   };

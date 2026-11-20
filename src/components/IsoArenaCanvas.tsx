@@ -119,7 +119,9 @@ import { pushReceptionBar } from '../render/receptionBar';
 import { LOUNGE_OBSTACLES, pushHallLounge } from '../render/hallLounge';
 import { hallBartenderSpots, pushHallBar } from '../render/hallBar';
 import { BAR_GUEST_SPOTS, BAR_PICKUP_SPOTS, HALL_BAR_BOX } from '../game/hallBar';
-import { nextBarVisitDelay, sendGuestToBar, updateGuestAtBar } from '../game/hallBarVisits';
+import { updateGuestAtBar } from '../game/hallBarVisits';
+import { createGameState } from '../game/gameState';
+import { runSystems } from '../game/systems';
 import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
@@ -1081,7 +1083,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       carrying: boolean;
     };
     let waiters: DrinkWaiter[] = [];
-    let barVisitTimer = 4;
+    const state = createGameState(); // the state board (gameState.ts); areas move into it one by one
     let vipEvent: VipEventState | null = null;
     let vipEventSeq = 0;
     let nextVipCooldown = 2.5;
@@ -1435,7 +1437,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           carrying: false,
         };
       });
-      barVisitTimer = 4;
+      state.guests.barVisitTimer = 4;
       magnetLedger.clear();
 
       // Same guests for the whole event – only reset magnet state for the new wave
@@ -3287,12 +3289,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
-          // BAR VISITS: every few seconds a dancer walks to the bar for a drink (hallBarVisits.ts)
-          barVisitTimer -= simDt;
-          if (barVisitTimer <= 0) {
-            barVisitTimer = nextBarVisitDelay();
-            sendGuestToBar(guests);
-          }
+          state.guests.actors = guests; // bridge until the guest list itself moves to the state board
+          runSystems(state, simDt); // loop systems (systems.ts): bar visits
 
           // ====================================================================
           // UPDATE GUESTS (IN-PLACE SOCIAL DANCING, SPOT SWITCHING, RECRUITING & SEATED)

@@ -7,6 +7,8 @@
 import { angleToIsoDirection, moveTowardPoint, worldToIso } from './rules.ts';
 import type { IsoDirection } from './spriteExtractor.ts';
 import { BAR_GUEST_SPOTS, barFacePoint } from './hallBar.ts';
+import type { GameState } from './gameState.ts';
+import type { GameSystem } from './systems.ts';
 
 /** The guest fields the bar visit reads and writes (a slice of WeddingGuestActor). */
 export interface BarGoer {
@@ -105,3 +107,16 @@ export function updateGuestAtBar(guest: BarGoer, simDt: number) {
     }
   }
 }
+
+/** Loop system: every few seconds a dancer walks to the bar for a drink (state.guests.barVisitTimer). */
+export const barVisitsSystem: GameSystem = {
+  name: 'barVisits',
+  update(state: GameState, dt: number) {
+    const g = state.guests;
+    g.barVisitTimer -= dt;
+    if (g.barVisitTimer <= 0) {
+      g.barVisitTimer = nextBarVisitDelay();
+      sendGuestToBar(g.actors);
+    }
+  },
+};
