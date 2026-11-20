@@ -7,7 +7,7 @@
  * The canvas owns phase timers and drawing; this module owns the arriving guests and the stats.
  */
 
-import type { WeddingGuestActor } from '../components/IsoArenaCanvas';
+import type { WeddingGuestActor } from './guestActor';
 import { angleToIsoDirection, moveTowardPoint, worldToIso } from './rules';
 import { ARRIVAL, arrivalSchedule } from './eventPhases';
 import {

@@ -3,7 +3,7 @@
  * Drawing only: pose timer rings over posing guests, the phase title card and the live reception bar.
  */
 
-import type { WeddingGuestActor } from '../components/IsoArenaCanvas';
+import type { WeddingGuestActor } from '../game/guestActor';
 import { worldToIso } from '../game/rules';
 import { ARRIVAL, PHASE_INTRO_SEC, getPhaseInfo, type EventPhaseId } from '../game/eventPhases';
 import type { ArrivalStats } from '../game/arrivalPhase';
