@@ -118,16 +118,14 @@ import { hallBartenderSpots, pushHallBar } from '../render/hallBar';
 import { BAR_GUEST_SPOTS, HALL_BAR_BOX } from '../game/hallBar';
 import { updateGuestAtBar } from '../game/hallBarVisits';
 import { createGameState } from '../game/gameState';
+import { createEveningFlow } from '../game/eveningFlow';
 import { runSystems } from '../game/systems';
 import { createDrinkWaiters, trayBump, trayBumpMessage } from '../game/drinkWaiters';
 import { pushDrinkWaiters } from '../render/drinkWaiters';
 import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
-import {
-  PHASE_INTRO_SEC,
-  rateArrivalShot,
-} from '../game/eventPhases';
+import { rateArrivalShot } from '../game/eventPhases';
 import {
   PHOTO_SPOT,
   HALL_EXIT,
@@ -946,7 +944,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // (sticking magnets, wave completion, penalties) doesn't reshuffle the whole crowd at once
     let crowdJoy = 90;
     let crowdMoveCooldown = 0;
-    let trackTimeRemaining = 65;
     let hitstopRemaining = 0;
     let cameraTrauma = 0;
     let camX = 0;
@@ -968,8 +965,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         mood.onArrivalMissed(moodBook, g.id);
         addFrameLabel('−❤', g.x, g.y, '#f87171', where === 'yard' ? '😒 ביקשו תמונה ולא צילמת' : '😕 פספסת תמונה בכניסה');
       },
-      onAllSeated: () => startDancingPhase(),
-      onCeremony: () => { state.evening.phase = 'ceremony'; state.evening.phaseIntroTimer = PHASE_INTRO_SEC; sound.playFanfare(true); },
+      onAllSeated: () => flow.startDancing(),
+      onCeremony: () => flow.startCeremony(),
     });
     // Who is in each photo on its way through camera → laptop → sheets → board (FIFO)
     const magnetLedger = new MagnetLedger();
@@ -986,6 +983,13 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // Big floating score labels for whole-frame scoring (Hebrew)
     const frameLabels: Array<{ text: string; sub: string; x: number; y: number; life: number; color: string }> = [];
     const state = createGameState(); // the state board (gameState.ts); areas move into it one by one
+    const flow = createEveningFlow(state.evening, {
+      arrival,
+      coupleToHall: () => startEntrance(coupleEntrance, vipCouple),
+      danceSetSec: () => Number(new URLSearchParams(window.location.search).get('evening')) || mood.MOOD.danceSetSec,
+      fanfare: () => sound.playFanfare(true),
+      announce: (text, sec) => { player.stationFeedbackText = text; player.stationFeedbackTimer = sec; },
+    });
     let upgradeLevels: PhotographerUpgradeLevels = {
       turbo_station: 0,
       pro_sdcard: 0,
@@ -1312,7 +1316,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.cameraOnDesk = false;
       player.transferAnimTimer = 0;
       player.transferBatch = 0;
-      trackTimeRemaining = mood.MOOD.danceSetSec;
+      state.evening.danceTimeLeft = mood.MOOD.danceSetSec;
 
       // Spawn first VIP Moment right away so the hall feels alive!
       state.evening.vipEvent = createVipEvent(state.evening.vipEventSeq++);
@@ -1507,38 +1511,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         moodBook = mood.createMoodBook();
         eveningSummary = null;
         mood.registerGuests(moodBook, guests.map((g) => g.id));
-        startArrivalPhase();
+        arrivalPlayerPlaced = false;
+        flow.startArrival();
       }
     };
-
-    function startArrivalPhase() {
-      state.evening.phase = 'arrival';
-      state.evening.phaseIntroTimer = PHASE_INTRO_SEC;
-      state.evening.phaseTime = 0;
-      arrivalPlayerPlaced = false;
-      state.evening.vipEvent = null;
-      state.evening.nextVipCooldown = 9999;
-      arrival.start();
-    }
-
-    function startDancingPhase() {
-      arrival.finishAll();
-      startEntrance(coupleEntrance, vipCouple); // the bride & groom walk from the bridal suite into the hall
-      state.evening.phase = 'dancing';
-      state.evening.phaseIntroTimer = PHASE_INTRO_SEC;
-      state.evening.phaseTime = 0;
-      trackTimeRemaining = Number(new URLSearchParams(window.location.search).get('evening')) || mood.MOOD.danceSetSec;
-      state.evening.vipEvent = createVipEvent(state.evening.vipEventSeq++);
-      state.evening.nextVipCooldown = 5.0;
-      sound.playFanfare(true);
-      player.stationFeedbackText = `🚪 קבלת הפנים הסתיימה: צילמת ${arrival.stats.photographed}/${arrival.stats.total} אורחים (${arrival.stats.gold} בזהב ✨)`;
-      player.stationFeedbackTimer = 4;
-    }
-
-    function updateArrivalPhase(dt: number) {
-      state.evening.phaseTime += dt;
-      arrival.update(dt, state.evening.phaseTime);
-    }
 
     // ======================================================================
     // THE BRIDE & GROOM — unique VIP actors (cast sheet sprites)
@@ -2429,13 +2405,11 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 player.y = sy;
               }
               // Debug: ?phase=dancing skips the reception (and the chuppah), ?phase=ceremony goes straight to the chuppah
-              ({ dancing: startDancingPhase, ceremony: arrival.skipToCeremony } as Record<string, () => void>)[new URLSearchParams(window.location.search).get('phase') ?? '']?.();
+              flow.debugJump(new URLSearchParams(window.location.search).get('phase'));
               if (new URLSearchParams(window.location.search).get('djthrow') === '1') djState.nextThrowIn = 4;
             }
-            updateArrivalPhase(simDt);
-          } else {
-            trackTimeRemaining = Math.max(0, trackTimeRemaining - simDt);
           }
+          flow.update(simDt);
 
           // Check proximity to Far-Corner Magnet Workstation AND Tripod Magnet Board
           const distToStation = Math.hypot(
@@ -3690,7 +3664,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // End of the evening: the dance set is over -> closing penalties, then stars (guestMood.ts)
           const isStickingAnimActive = pendingBoardSticks > 0 || flyingMagnets.some((m) => m.active);
-          if (state.evening.phase === 'dancing' && trackTimeRemaining <= 0 && !pendingOutcome && !isStickingAnimActive) {
+          if (flow.danceSetOver() && !pendingOutcome && !isStickingAnimActive) {
             eveningSummary = mood.settleEvening(moodBook);
             player.partyJoy = mood.joyPercent(moodBook);
             pendingOutcome = eveningSummary.stars >= 1 ? 'victory' : 'defeat';
@@ -5329,7 +5303,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           magnetsPrinted: mood.openMagnets(moodBook).open,
           targetMagnets: mood.openMagnets(moodBook).promised,
           canPromise: mood.canPromise(moodBook, gameClock),
-          trackTimeSec: Math.round(trackTimeRemaining),
+          trackTimeSec: Math.round(state.evening.danceTimeLeft),
           stageTitleHe: waveCfg.stageTitleHe,
           photosInCamera: player.photosInCamera,
           photosOnComputer: player.photosOnComputer,
