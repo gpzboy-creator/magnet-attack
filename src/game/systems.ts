@@ -13,14 +13,17 @@
 import type { GameState } from './gameState.ts';
 import { barVisitsSystem } from './hallBarVisits.ts';
 import { drinkWaitersSystem } from './drinkWaiters.ts';
+import { vipEventsSystem } from './vipEvents.ts';
 
 /**
  * Where in tick a system runs (in tick order):
+ * - beforeMoodTick: after the photographer's movement, before the guests' magnet deadlines
+ *   (both write a guest's speech bubble; the deadline's bubble must win, as before)
  * - beforeShooting: after the guests' magnet deadlines, before aiming/shooting (shooting scores waiters)
  * - beforeGuestUpdate: after the crowd controller (sit/dance/recruit), before the per-guest update
  */
-export type SystemSlot = 'beforeShooting' | 'beforeGuestUpdate';
-export const SYSTEM_SLOTS: readonly SystemSlot[] = ['beforeShooting', 'beforeGuestUpdate'];
+export type SystemSlot = 'beforeMoodTick' | 'beforeShooting' | 'beforeGuestUpdate';
+export const SYSTEM_SLOTS: readonly SystemSlot[] = ['beforeMoodTick', 'beforeShooting', 'beforeGuestUpdate'];
 
 export interface GameSystem {
   name: string;
@@ -29,7 +32,7 @@ export interface GameSystem {
 }
 
 /** The loop order. Keep it explicit: the order is part of the game's behaviour. */
-export const SYSTEMS: readonly GameSystem[] = [drinkWaitersSystem, barVisitsSystem];
+export const SYSTEMS: readonly GameSystem[] = [vipEventsSystem, drinkWaitersSystem, barVisitsSystem];
 
 /** Run the systems of one slot once, in list order, on the same state and dt. */
 export function runSystems(state: GameState, dt: number, slot: SystemSlot, systems: readonly GameSystem[] = SYSTEMS) {

@@ -29,13 +29,14 @@ test('createGameState has the five topics and the starting values', () => {
   const state = createGameState();
   assert.deepEqual(Object.keys(state), ['evening', 'photographer', 'guests', 'station', 'supplies']);
   assert.equal(state.guests.barVisitTimer, 4);
+  assert.deepEqual(state.evening, { phase: 'arrival', vipEvent: null, vipEventSeq: 0, nextVipCooldown: 2.5 });
   assert.deepEqual(state.guests.actors, []);
   assert.deepEqual(state.guests.waiters, []);
 });
 
-test('the loop order: drink waiters run before bar visits, each in the slot where its code ran in tick', () => {
-  assert.deepEqual(SYSTEMS.map((s) => s.name), ['drinkWaiters', 'barVisits']);
-  assert.deepEqual(SYSTEMS.map((s) => s.slot), ['beforeShooting', 'beforeGuestUpdate']);
+test('the loop order: VIP moments, then drink waiters, then bar visits, each in the slot where its code ran in tick', () => {
+  assert.deepEqual(SYSTEMS.map((s) => s.name), ['vipEvents', 'drinkWaiters', 'barVisits']);
+  assert.deepEqual(SYSTEMS.map((s) => s.slot), ['beforeMoodTick', 'beforeShooting', 'beforeGuestUpdate']);
   // Slots are listed in tick order, so list order + slot order agree
   const slotIdx = SYSTEMS.map((s) => SYSTEM_SLOTS.indexOf(s.slot));
   assert.deepEqual(slotIdx, [...slotIdx].sort((a, b) => a - b));

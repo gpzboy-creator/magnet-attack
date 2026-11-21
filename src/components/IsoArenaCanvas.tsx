@@ -11,7 +11,6 @@ import {
   PHOTOS_PER_SHEET,
   PhotographerUpgradeLevels,
   UpgradeId,
-  VipEventState,
   angleToIsoDirection,
   CROWD_MOVE_INTERVAL_SEC,
   FloorObstacle,
@@ -990,9 +989,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // Big floating score labels for whole-frame scoring (Hebrew)
     const frameLabels: Array<{ text: string; sub: string; x: number; y: number; life: number; color: string }> = [];
     const state = createGameState(); // the state board (gameState.ts); areas move into it one by one
-    let vipEvent: VipEventState | null = null;
-    let vipEventSeq = 0;
-    let nextVipCooldown = 2.5;
     let upgradeLevels: PhotographerUpgradeLevels = {
       turbo_station: 0,
       pro_sdcard: 0,
@@ -1322,8 +1318,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       trackTimeRemaining = mood.MOOD.danceSetSec;
 
       // Spawn first VIP Moment right away so the hall feels alive!
-      vipEvent = createVipEvent(vipEventSeq++);
-      nextVipCooldown = 5.0;
+      state.evening.vipEvent = createVipEvent(state.evening.vipEventSeq++);
+      state.evening.nextVipCooldown = 5.0;
 
       // Three waiters in black shirts + aprons, running drinks from the hall bar to the guests
       state.guests.waiters = createDrinkWaiters(waveNum);
@@ -1523,8 +1519,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       phaseIntroTimer = PHASE_INTRO_SEC;
       phaseTime = 0;
       arrivalPlayerPlaced = false;
-      vipEvent = null;
-      nextVipCooldown = 9999;
+      state.evening.vipEvent = null;
+      state.evening.nextVipCooldown = 9999;
       arrival.start();
     }
 
@@ -1535,8 +1531,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       phaseIntroTimer = PHASE_INTRO_SEC;
       phaseTime = 0;
       trackTimeRemaining = Number(new URLSearchParams(window.location.search).get('evening')) || mood.MOOD.danceSetSec;
-      vipEvent = createVipEvent(vipEventSeq++);
-      nextVipCooldown = 5.0;
+      state.evening.vipEvent = createVipEvent(state.evening.vipEventSeq++);
+      state.evening.nextVipCooldown = 5.0;
       sound.playFanfare(true);
       player.stationFeedbackText = `🚪 קבלת הפנים הסתיימה: צילמת ${arrival.stats.photographed}/${arrival.stats.total} אורחים (${arrival.stats.gold} בזהב ✨)`;
       player.stationFeedbackTimer = 4;
@@ -1567,14 +1563,14 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     const COUPLE_SPLIT_CHANCE = 0.3;
     const isCoupleAtChuppah = () =>
       vipCouple.length === 2 &&
-      vipEvent?.kind === 'chuppah_kiss' &&
+      state.evening.vipEvent?.kind === 'chuppah_kiss' &&
       vipCouple.every(
         (m, i) => Math.hypot(m.x - COUPLE_CHUPPAH_SPOTS[i].x, m.y - COUPLE_CHUPPAH_SPOTS[i].y) < 8
       );
     function updateVipCouple(dt: number) {
       const [bride, groom] = vipCouple;
       if (!bride || !groom) return;
-      const chuppahMoment = Boolean(vipEvent && vipEvent.kind === 'chuppah_kiss' && vipEvent.remainingSec > 0);
+      const chuppahMoment = Boolean(state.evening.vipEvent && state.evening.vipEvent.kind === 'chuppah_kiss' && state.evening.vipEvent.remainingSec > 0);
       if (chuppahMoment) coupleSplit = false; // the big moments are always together
       bride.vipTimer = (bride.vipTimer ?? 0) - dt;
       if (!chuppahMoment && bride.vipTimer <= 0) {
@@ -1770,7 +1766,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       availableMagnetsOnBoard = 0;
       pendingBoardSticks = 0;
       magnetsTakenByGuests = 0;
-      vipEventSeq = 0;
+      state.evening.vipEventSeq = 0;
       upgradeLevels = {
         turbo_station: 0,
         pro_sdcard: 0,
@@ -1882,10 +1878,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const isSeated = guest.isSeated;
       const isCelebrating = guest.celebrateTimer > 0 || guest.hitFlashTimer > 0;
       const isVipTarget =
-        vipEvent !== null &&
-        vipEvent.remainingSec > 0 &&
-        ((vipEvent.kind === 'table_toast' && guest.tableId === vipEvent.targetTableId) ||
-          (vipEvent.kind === 'hora_frenzy' && guest.role === 'dancer'));
+        state.evening.vipEvent !== null &&
+        state.evening.vipEvent.remainingSec > 0 &&
+        ((state.evening.vipEvent.kind === 'table_toast' && guest.tableId === state.evening.vipEvent.targetTableId) ||
+          (state.evening.vipEvent.kind === 'hora_frenzy' && guest.role === 'dancer'));
 
       // Soft multi-layered ground shadow
       ctx.fillStyle = 'rgba(15, 10, 8, 0.45)';
@@ -2670,29 +2666,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             player.lean += (targetLean - player.lean) * Math.min(1, simDt * 10);
           }
 
-          // Update VIP Event Countdown & Check if Photographer Missed the Active Event!
-          if (vipEvent && vipEvent.remainingSec > 0) {
-            vipEvent = {
-              ...vipEvent,
-              remainingSec: Math.max(0, vipEvent.remainingSec - simDt),
-            };
-            if (vipEvent.remainingSec === 0) {
-              const missedGuest = guests[vipEventSeq % Math.max(1, guests.length)];
-              if (missedGuest) {
-                missedGuest.speechBubbleText = '😞 פספסת!';
-                missedGuest.wantsPhotoTimer = 1.4;
-              }
-              vipEvent = null;
-              nextVipCooldown = 3.5;
-            }
-          } else if (eventPhase === 'dancing') {
-            nextVipCooldown -= simDt;
-            if (nextVipCooldown <= 0) {
-              vipEvent = createVipEvent(vipEventSeq++);
-              nextVipCooldown = 4.5;
-              sound.playTelegraph();
-            }
-          }
+          // VIP moments countdown / next moment (vipEvents.ts); before the deadlines, whose bubble wins
+          state.guests.actors = guests; // bridge until the guest list itself moves to the state board
+          state.evening.phase = eventPhase; // bridge until the event phase itself moves to the state board
+          runSystems(state, simDt, 'beforeMoodTick');
 
           // Each guest's magnet deadline (the old global delivery timer is gone): guestMood.ts
           for (const id of mood.tickMood(moodBook, gameClock)) {
@@ -2705,7 +2682,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           player.partyJoy = mood.joyPercent(moodBook);
 
           // Drink waiters (drinkWaiters.ts), then the tray bump check
-          state.guests.actors = guests; // bridge until the guest list itself moves to the state board
           runSystems(state, simDt, 'beforeShooting');
           for (const wActor of state.guests.waiters) {
             const bump = trayBump(wActor, player);
@@ -3622,8 +3598,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
                 // Check if shot counts toward active VIP Moment ("צילום האירוע הנכון")!
                 const isRightEventShot = Boolean(
-                  vipEvent &&
-                    doesShotCountForVipEvent(vipEvent, {
+                  state.evening.vipEvent &&
+                    doesShotCountForVipEvent(state.evening.vipEvent, {
                       x: guest.x,
                       y: guest.y,
                       role: guest.role,
@@ -3632,7 +3608,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 );
 
                 const shotJoyEval = evaluateGuestJoyFromShot({
-                  activeVipEvent: vipEvent,
+                  activeVipEvent: state.evening.vipEvent,
                   isRightEventShot,
                   isFrameMatched: frameEval.matched,
                   revivedSeatedGuest: revivedToDancefloor,
@@ -3641,39 +3617,39 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 // Apply Guest Joy delta based on whether this was the RIGHT event!
                 player.partyJoy = Math.min(100, player.partyJoy + shotJoyEval.joyDelta);
 
-                if (vipEvent && isRightEventShot) {
-                  const nextCaptured = vipEvent.photosCaptured + 1;
-                  if (nextCaptured >= vipEvent.requiredPhotos) {
-                    const isVipFrameMatch = activeFrame === vipEvent.preferredFrame;
+                if (state.evening.vipEvent && isRightEventShot) {
+                  const nextCaptured = state.evening.vipEvent.photosCaptured + 1;
+                  if (nextCaptured >= state.evening.vipEvent.requiredPhotos) {
+                    const isVipFrameMatch = activeFrame === state.evening.vipEvent.preferredFrame;
                     const vipScore = Math.round(
-                      vipEvent.bonusScore * (isVipFrameMatch ? 1.5 : 1.0)
+                      state.evening.vipEvent.bonusScore * (isVipFrameMatch ? 1.5 : 1.0)
                     );
                     score += vipScore;
                     bestScore = Math.max(bestScore, score);
-                    player.partyJoy = Math.min(100, player.partyJoy + vipEvent.bonusJoy);
+                    player.partyJoy = Math.min(100, player.partyJoy + state.evening.vipEvent.bonusJoy);
                     if (player.photosInCamera < maxCapNow) {
                       player.photosInCamera++;
                       magnetLedger.push(null, gameClock);
                     }
                     sound.playFanfare(true);
                     spawnParticles(guest.x, guest.y, 36, '#fbbf24', 180, 48);
-                    player.stationFeedbackText = `⭐ צילמת את האירוע הנכון! +${vipEvent.bonusJoy}% שמחה ו-+${vipScore} נק'! עכשיו הוצא מגנט ללוח בזמן! ⏱️🧲`;
+                    player.stationFeedbackText = `⭐ צילמת את האירוע הנכון! +${state.evening.vipEvent.bonusJoy}% שמחה ו-+${vipScore} נק'! עכשיו הוצא מגנט ללוח בזמן! ⏱️🧲`;
                     player.stationFeedbackTimer = 3.4;
-                    vipEvent = null;
-                    nextVipCooldown = 4.5;
+                    state.evening.vipEvent = null;
+                    state.evening.nextVipCooldown = 4.5;
                   } else {
-                    vipEvent = {
-                      ...vipEvent,
+                    state.evening.vipEvent = {
+                      ...state.evening.vipEvent,
                       photosCaptured: nextCaptured,
                     };
-                    player.stationFeedbackText = `🎯 צילמת את האירוע הנכון (${nextCaptured}/${vipEvent.requiredPhotos})! +${shotJoyEval.joyDelta}% שמחה!`;
+                    player.stationFeedbackText = `🎯 צילמת את האירוע הנכון (${nextCaptured}/${state.evening.vipEvent.requiredPhotos})! +${shotJoyEval.joyDelta}% שמחה!`;
                     player.stationFeedbackTimer = 2.0;
                   }
-                } else if (vipEvent && !isRightEventShot) {
+                } else if (state.evening.vipEvent && !isRightEventShot) {
                   guest.speechBubbleText =
-                    vipEvent.kind === 'table_toast'
-                      ? `🥂 לשולחן #${vipEvent.targetTableId}!`
-                      : vipEvent.kind === 'chuppah_kiss'
+                    state.evening.vipEvent.kind === 'table_toast'
+                      ? `🥂 לשולחן #${state.evening.vipEvent.targetTableId}!`
+                      : state.evening.vipEvent.kind === 'chuppah_kiss'
                       ? '💍 לחופה!'
                       : '💃 להורה!';
                   guest.wantsPhotoTimer = 1.3;
@@ -3977,15 +3953,15 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
               hasMagnet: true,
               photoCount: 1,
               celebrateTimer:
-                idx >= 3 && (chuppahCelebrateTimer > 0 || vipEvent?.kind === 'chuppah_kiss')
+                idx >= 3 && (chuppahCelebrateTimer > 0 || state.evening.vipEvent?.kind === 'chuppah_kiss')
                   ? Math.max(0.5, chuppahCelebrateTimer)
                   : 0,
               hitFlashTimer: chuppahCelebrateTimer > 1.6 && idx >= 3 ? 0.15 : 0,
-              wantsPhotoTimer: vipEvent?.kind === 'chuppah_kiss' ? 5 : 0,
+              wantsPhotoTimer: state.evening.vipEvent?.kind === 'chuppah_kiss' ? 5 : 0,
               speechBubbleText:
                 chuppahCelebrateTimer > 0 && idx === 4
                   ? 'תמונה מושלמת בחופה! 💍✨'
-                  : vipEvent?.kind === 'chuppah_kiss' && idx === 4
+                  : state.evening.vipEvent?.kind === 'chuppah_kiss' && idx === 4
                   ? '💍 צלם אותנו בחופה!'
                   : null,
               poseTimer: 0,
@@ -5090,8 +5066,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       }
 
       // Render VIP Moment Golden Spotlight & Target Ring in World
-      if (stateRef.current !== 'title' && vipEvent && vipEvent.remainingSec > 0) {
-        const vIso = worldToIso(vipEvent.targetPos.x, vipEvent.targetPos.y, 0);
+      if (stateRef.current !== 'title' && state.evening.vipEvent && state.evening.vipEvent.remainingSec > 0) {
+        const vIso = worldToIso(state.evening.vipEvent.targetPos.x, state.evening.vipEvent.targetPos.y, 0);
         const vx = originX + vIso.x;
         const vy = originY + vIso.y;
         const pulseR = 64 + Math.sin(discoBeatPhase * 3) * 6;
@@ -5125,7 +5101,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         ctx.font = 'bold 7.5px "Heebo", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(
-          `⭐ ${vipEvent.photosCaptured}/${vipEvent.requiredPhotos} · ${Math.ceil(vipEvent.remainingSec)}s`,
+          `⭐ ${state.evening.vipEvent.photosCaptured}/${state.evening.vipEvent.requiredPhotos} · ${Math.ceil(state.evening.vipEvent.remainingSec)}s`,
           vx,
           tagY + 0.5
         );
@@ -5376,7 +5352,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           totalMagnetsPrinted: totalMagnetsAllWaves,
           magnetsTakenByGuests,
           isNearBoard: player.isNearBoard,
-          vipEvent: vipEvent ? { ...vipEvent } : null,
+          vipEvent: state.evening.vipEvent ? { ...state.evening.vipEvent } : null,
           selectedFrame: selectedFrameRef.current,
           upgradeLevels: { ...upgradeLevels },
           crowdStats,
