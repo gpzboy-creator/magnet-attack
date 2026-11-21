@@ -11,13 +11,14 @@ import type { DrinkGuest, DrinkWaiter } from './drinkWaiters.ts';
 import type { VipEventState } from './rules.ts';
 import type { EventPhaseId } from './eventPhases.ts';
 
-/** The evening: event phase, clocks, score, waves. (clocks, score, waves: still in IsoArenaCanvas.tsx) */
+/** The evening: event phase, VIP moments. (clocks, score, waves: still in IsoArenaCanvas.tsx) */
 export interface EveningState {
-  /**
-   * TEMPORARY BRIDGE: the event phase itself still lives in IsoArenaCanvas.tsx (`eventPhase`).
-   * tick copies it here right before runSystems; it disappears when the phase moves here.
-   */
+  /** The current phase of the evening (eventPhases.ts). */
   phase: EventPhaseId;
+  /** Seconds left on the phase title card (PHASE_INTRO_SEC when a phase starts). */
+  phaseIntroTimer: number;
+  /** Seconds since the current phase started (drives the arrival schedule). */
+  phaseTime: number;
   /** The active VIP moment ("צילום האירוע הנכון"), or null between moments (vipEvents.ts). */
   vipEvent: VipEventState | null;
   /** Counts the VIP moments created; picks the next kind and the guest who says "missed it". */
@@ -59,7 +60,7 @@ export interface GameState {
 /** A fresh board with the values the game starts with. */
 export function createGameState(): GameState {
   return {
-    evening: { phase: 'arrival', vipEvent: null, vipEventSeq: 0, nextVipCooldown: 2.5 },
+    evening: { phase: 'arrival', phaseIntroTimer: 0, phaseTime: 0, vipEvent: null, vipEventSeq: 0, nextVipCooldown: 2.5 },
     photographer: {},
     guests: { actors: [], barVisitTimer: 4, waiters: [] },
     station: {},

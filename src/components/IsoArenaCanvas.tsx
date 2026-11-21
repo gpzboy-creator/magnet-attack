@@ -125,7 +125,6 @@ import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/pl
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
 import {
-  EventPhaseId,
   PHASE_INTRO_SEC,
   rateArrivalShot,
 } from '../game/eventPhases';
@@ -959,8 +958,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     let vipCouple: WeddingGuestActor[] = [];
     const coupleEntrance = createEntrance();
     // EVENT PHASES (eventPhases.ts): arrival (guests come in & pose) → ceremony (chuppah) → dancing
-    let eventPhase: EventPhaseId = 'arrival';
-    let phaseIntroTimer = 0, phaseTime = 0;
     let arrivalPlayerPlaced = false;
     /** Guests still arriving (kept out of `guests` until they sit down in the hall) — arrivalPhase.ts. */
     const arrival = createArrival({
@@ -972,7 +969,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         addFrameLabel('−❤', g.x, g.y, '#f87171', where === 'yard' ? '😒 ביקשו תמונה ולא צילמת' : '😕 פספסת תמונה בכניסה');
       },
       onAllSeated: () => startDancingPhase(),
-      onCeremony: () => { eventPhase = 'ceremony'; phaseIntroTimer = PHASE_INTRO_SEC; sound.playFanfare(true); },
+      onCeremony: () => { state.evening.phase = 'ceremony'; state.evening.phaseIntroTimer = PHASE_INTRO_SEC; sound.playFanfare(true); },
     });
     // Who is in each photo on its way through camera → laptop → sheets → board (FIFO)
     const magnetLedger = new MagnetLedger();
@@ -1515,9 +1512,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     };
 
     function startArrivalPhase() {
-      eventPhase = 'arrival';
-      phaseIntroTimer = PHASE_INTRO_SEC;
-      phaseTime = 0;
+      state.evening.phase = 'arrival';
+      state.evening.phaseIntroTimer = PHASE_INTRO_SEC;
+      state.evening.phaseTime = 0;
       arrivalPlayerPlaced = false;
       state.evening.vipEvent = null;
       state.evening.nextVipCooldown = 9999;
@@ -1527,9 +1524,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     function startDancingPhase() {
       arrival.finishAll();
       startEntrance(coupleEntrance, vipCouple); // the bride & groom walk from the bridal suite into the hall
-      eventPhase = 'dancing';
-      phaseIntroTimer = PHASE_INTRO_SEC;
-      phaseTime = 0;
+      state.evening.phase = 'dancing';
+      state.evening.phaseIntroTimer = PHASE_INTRO_SEC;
+      state.evening.phaseTime = 0;
       trackTimeRemaining = Number(new URLSearchParams(window.location.search).get('evening')) || mood.MOOD.danceSetSec;
       state.evening.vipEvent = createVipEvent(state.evening.vipEventSeq++);
       state.evening.nextVipCooldown = 5.0;
@@ -1539,8 +1536,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     }
 
     function updateArrivalPhase(dt: number) {
-      phaseTime += dt;
-      arrival.update(dt, phaseTime);
+      state.evening.phaseTime += dt;
+      arrival.update(dt, state.evening.phaseTime);
     }
 
     // ======================================================================
@@ -2343,7 +2340,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const dt = clampDt(rawDt);
 
       discoBeatPhase += dt * 2.8;
-      updateDj(djState, dt, eventPhase === 'dancing', () => DJ_DANCE_TARGETS[Math.floor(Math.random() * DJ_DANCE_TARGETS.length)]);
+      updateDj(djState, dt, state.evening.phase === 'dancing', () => DJ_DANCE_TARGETS[Math.floor(Math.random() * DJ_DANCE_TARGETS.length)]);
       // Squash & stretch settles back to 1 on a damped spring (slight wobble = more life)
       const springX = stepScaleSpring(player.scaleX, player.scaleVelX, dt);
       const springY = stepScaleSpring(player.scaleY, player.scaleVelY, dt);
@@ -2408,8 +2405,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           }
         } else if (simDt > 0) {
           // Track Timer Countdown
-          phaseIntroTimer = Math.max(0, phaseIntroTimer - simDt);
-          if (eventPhase !== 'dancing') {
+          state.evening.phaseIntroTimer = Math.max(0, state.evening.phaseIntroTimer - simDt);
+          if (state.evening.phase !== 'dancing') {
             if (!arrivalPlayerPlaced) {
               // Start the evening at the lobby photo wall
               player.x = PHOTO_SPOT.x - 60;
@@ -2668,7 +2665,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // VIP moments countdown / next moment (vipEvents.ts); before the deadlines, whose bubble wins
           state.guests.actors = guests; // bridge until the guest list itself moves to the state board
-          state.evening.phase = eventPhase; // bridge until the event phase itself moves to the state board
           runSystems(state, simDt, 'beforeMoodTick');
 
           // Each guest's magnet deadline (the old global delivery timer is gone): guestMood.ts
@@ -2887,7 +2883,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                     subjects.push({ kind: g.guestType ?? 'regular', coupleId: g.coupleId });
                   }
                 }
-                if (eventPhase !== 'arrival') {
+                if (state.evening.phase !== 'arrival') {
                   for (const g of vipCouple) {
                     if (isTargetInCone(cone, g, 12)) subjects.push({ kind: g.guestType ?? 'regular' });
                   }
@@ -3477,7 +3473,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             frameLabels[li].y -= simDt * 14;
             if (frameLabels[li].life <= 0) frameLabels.splice(li, 1);
           }
-          if (eventPhase !== 'dancing') arrival.stepCouple(vipCouple, simDt); // in the suite, then to the chuppah (ceremonyPhase.ts)
+          if (state.evening.phase !== 'dancing') arrival.stepCouple(vipCouple, simDt); // in the suite, then to the chuppah (ceremonyPhase.ts)
           else if (!stepEntrance(coupleEntrance, vipCouple, simDt)) updateVipCouple(simDt);
 
           // ====================================================================
@@ -3555,7 +3551,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 if (player.photosInCamera < maxCapNow) {
                   player.photosInCamera++;
                   magnetLedger.push(guest.id, gameClock);
-                  mood.onShot(moodBook, [guest.id], gameClock, eventPhase === 'dancing' ? 'dancing' : 'arrival');
+                  mood.onShot(moodBook, [guest.id], gameClock, state.evening.phase === 'dancing' ? 'dancing' : 'arrival');
                 }
 
                 // Personality reactions (attention seeker satisfied / magnet tracker's countdown starts)
@@ -3694,7 +3690,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // End of the evening: the dance set is over -> closing penalties, then stars (guestMood.ts)
           const isStickingAnimActive = pendingBoardSticks > 0 || flyingMagnets.some((m) => m.active);
-          if (eventPhase === 'dancing' && trackTimeRemaining <= 0 && !pendingOutcome && !isStickingAnimActive) {
+          if (state.evening.phase === 'dancing' && trackTimeRemaining <= 0 && !pendingOutcome && !isStickingAnimActive) {
             eveningSummary = mood.settleEvening(moodBook);
             player.partyJoy = mood.joyPercent(moodBook);
             pendingOutcome = eveningSummary.stars >= 1 ? 'victory' : 'defeat';
@@ -4995,7 +4991,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       drawGuestHearts(ctx, [...guests, ...vipCouple, ...arrival.guests.filter((g) => g.arrival?.state !== 'waiting')], moodBook, originX, originY, player, gameClock);
 
       // ARRIVAL: pose timer ring over posing guests (arrivalOverlay.ts)
-      if (eventPhase === 'arrival') drawPoseRings(ctx, arrival.guests, originX, originY);
+      if (state.evening.phase === 'arrival') drawPoseRings(ctx, arrival.guests, originX, originY);
 
       // Whole-frame score labels (Hebrew, RTL) floating above the photographed area
       if (frameLabels.length) {
@@ -5294,7 +5290,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
       // EVENT PHASE: title card when a phase starts + live arrival progress (screen space, arrivalOverlay.ts)
       if (stateRef.current === 'playing') {
-        drawPhaseOverlay(ctx, viewW, viewH, eventPhase, phaseIntroTimer, eventPhase === 'arrival' ? receptionLabelHe(arrival.stats, arrival.comingCount, arrival.yardCount) : eventPhase === 'ceremony' ? arrival.ceremonyLabelHe : null);
+        drawPhaseOverlay(ctx, viewW, viewH, state.evening.phase, state.evening.phaseIntroTimer, state.evening.phase === 'arrival' ? receptionLabelHe(arrival.stats, arrival.comingCount, arrival.yardCount) : state.evening.phase === 'ceremony' ? arrival.ceremonyLabelHe : null);
       }
 
       // Update HUD at regular cadence

@@ -29,7 +29,7 @@ test('createGameState has the five topics and the starting values', () => {
   const state = createGameState();
   assert.deepEqual(Object.keys(state), ['evening', 'photographer', 'guests', 'station', 'supplies']);
   assert.equal(state.guests.barVisitTimer, 4);
-  assert.deepEqual(state.evening, { phase: 'arrival', vipEvent: null, vipEventSeq: 0, nextVipCooldown: 2.5 });
+  assert.deepEqual(state.evening, { phase: 'arrival', phaseIntroTimer: 0, phaseTime: 0, vipEvent: null, vipEventSeq: 0, nextVipCooldown: 2.5 });
   assert.deepEqual(state.guests.actors, []);
   assert.deepEqual(state.guests.waiters, []);
 });
