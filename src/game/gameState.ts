@@ -39,6 +39,10 @@ export interface GuestsState {
    * tick points this at it right before runSystems; it disappears when the guests topic moves here.
    */
   actors: Array<BarGoer & DrinkGuest>;
+  /** Smoothed crowd vibe: follows partyJoy gradually so a joy jump doesn't reshuffle the crowd at once (crowdControl.ts). */
+  crowdJoy: number;
+  /** Seconds until the next crowd move (someone sits down / gets up). */
+  crowdMoveCooldown: number;
   /** Seconds until the next bar visit is considered (hallBarVisits.ts). */
   barVisitTimer: number;
   /** The drink waiters (drinkWaiters.ts); created per wave by createDrinkWaiters. */
@@ -64,7 +68,7 @@ export function createGameState(): GameState {
   return {
     evening: { phase: 'arrival', phaseIntroTimer: 0, phaseTime: 0, danceTimeLeft: 65, vipEvent: null, vipEventSeq: 0, nextVipCooldown: 2.5 },
     photographer: {},
-    guests: { actors: [], barVisitTimer: 4, waiters: [] },
+    guests: { actors: [], crowdJoy: 90, crowdMoveCooldown: 0, barVisitTimer: 4, waiters: [] },
     station: {},
     supplies: {},
   };
