@@ -98,14 +98,16 @@
 | נושא | מה בלוח המצב | שלבים ברשימה (לפי הסדר) | מה עדיין בקובץ הראשי |
 |---|---|---|---|
 | `guests` | `barVisitTimer`, `waiters` (מלצרי המשקאות); `actors` = **גשר זמני** (מצביע על `guests` של הקומפוננטה, מוגדר לפני המשבצת הראשונה) | 1. `drinkWaiters` (`drinkWaiters.ts`, משבצת `beforeShooting`; ציור ב-`render/drinkWaiters.ts`) · 2. `barVisits` (`hallBarVisits.ts`, משבצת `beforeGuestUpdate`) | רשימת האורחים עצמה (~80 שימושים); תוצאות ההתנגשות במגש (צליל, רעידה, חלקיקים, דחיפה — הבדיקה עצמה `trayBump` במודול) כי הצלם עוד לא בלוח; `updateGuestAtBar` בתוך לולאת האורחים (תלוי ב-`dancePhase` של אותו פריים — יעבור עם "AI אורחים") |
-| `evening` | `vipEvent`, `vipEventSeq`, `nextVipCooldown` (אירועי VIP); `phase` = **גשר זמני** (עותק של `eventPhase` של הקומפוננטה, מוגדר לפני המשבצת הראשונה) | 0. `vipEvents` (`vipEvents.ts`, משבצת `beforeMoodTick`: ספירה לאחור, "😞 פספסת!", אירוע חדש בריקודים) | `eventPhase` עצמו (15 שימושים); ניקוד צילום של אירוע VIP (בתוך לולאת הצילום, תלוי ב-`player`/`score`); התחלה/עצירה במעבר שלב; ציור טבעת ה-VIP (→ `render/`) |
+| `evening` | `phase`, `phaseIntroTimer`, `phaseTime` (שלב הערב); `vipEvent`, `vipEventSeq`, `nextVipCooldown` (אירועי VIP) | 0. `vipEvents` (`vipEvents.ts`, משבצת `beforeMoodTick`: ספירה לאחור, "😞 פספסת!", אירוע חדש בריקודים) | מעברי השלבים מחווטים (`startArrivalPhase`/`startDancingPhase`/`onCeremony` בקומפוננטה ובתוך `arrivalPhase.ts`); ניקוד צילום של אירוע VIP (בתוך לולאת הצילום, תלוי ב-`player`/`score`); התחלה/עצירה במעבר שלב; ציור טבעת ה-VIP (→ `render/`) |
 | `photographer`, `station`, `supplies` | ריק (הערה בכל נושא: מה צפוי להיכנס) | — | הכל |
 
 **20.11 — מלצרי המשקאות ✅:** `DrinkWaiter`, יצירה, הלולאה ו-`trayBump` ב-`src/game/drinkWaiters.ts` (+בדיקות), הציור ב-`src/render/drinkWaiters.ts` (שם תיכנס ההנפשה מ-PixelLab — המצבים `mode`/`carrying`/`trayItem` כבר במודול). הקובץ הראשי 5,594 → 5,427.
 
 **21.11 — אירועי VIP ✅:** 3 משתני `let` עברו לנושא `evening`, הספירה לאחור והחמצה ב-`src/game/vipEvents.ts` (+בדיקות) כשלב ראשון ברשימה, במשבצת חדשה `beforeMoodTick`. הקובץ הראשי 5,427 → 5,403, `stateLets` 74 → 71.
 
-**הבא בתור (מומלץ):** שלב האירוע עצמו (`eventPhase`, `phaseIntroTimer`, `phaseTime` → `evening`, ~15 שימושים ל-`eventPhase`) — מוחק את הגשר `state.evening.phase`. משימה קטנה-בינונית. לבדוק לפני: מי כותב את `phaseIntroTimer`/`phaseTime` (מעבר שלבים ב-`startArrivalPhase`/`startDancingPhase`/`onCeremony`) ואיפה הם יורדים ב-`tick`.
+**21.11 — שלב הערב ✅:** `eventPhase`, `phaseIntroTimer`, `phaseTime` עברו לנושא `evening` (הגשר `state.evening.phase` נמחק). הקובץ הראשי 5,403 → 5,399, `stateLets` 71 → 68.
+
+**הבא בתור (מומלץ):** מנוע שלבים + "תוכנית חתונה" — רשימת שלבים אחת שקובעת את הסדר (רגילה / הפוכה, `?program=reversed`), ומעברים כלליים במקום החיווט הנוכחי (קבלת פנים מפעילה חופה מתוך `arrivalPhase.ts`, `onAllSeated` מפעיל ריקודים). בלי שלבים חדשים עדיין. ההחלטות של שחר (21.11) על השלבים החדשים — ביומן.
 
 **איך מתקדמים:** משימה ייעודית אחת בונה את השלד — `src/game/gameState.ts` (טיפוס + יצירה) ו-`src/game/systems.ts` (רשימת השלבים) — ומעבירה אליו נושא ראשון. אחרי זה, כל פירוק "העבר, אל תשנה" מעביר את המשתנים של האזור ללוח המצב ואת הקוד שלו לשלב ברשימה, במקום להשאיר אותם בקומפוננטה. דוגמה למצב הרצוי בקטן: ביקורי הבר (`hallBarVisits.ts`) — 2 שורות בלולאה, כל השאר במודול.
 
