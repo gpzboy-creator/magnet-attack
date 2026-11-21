@@ -954,7 +954,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // The unique bride & groom (kept out of the crowd-ratio pool, but photographable like any guest)
     let vipCouple: WeddingGuestActor[] = [];
     const coupleEntrance = createEntrance();
-    // EVENT PHASES (eventPhases.ts): arrival (guests come in & pose) → ceremony (chuppah) → dancing
+    // EVENT PHASES (eventPhases.ts), in the order of the wedding program (weddingProgram.ts, eveningFlow.ts)
     let arrivalPlayerPlaced = false;
     /** Guests still arriving (kept out of `guests` until they sit down in the hall) — arrivalPhase.ts. */
     const arrival = createArrival({
@@ -965,8 +965,9 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         mood.onArrivalMissed(moodBook, g.id);
         addFrameLabel('−❤', g.x, g.y, '#f87171', where === 'yard' ? '😒 ביקשו תמונה ולא צילמת' : '😕 פספסת תמונה בכניסה');
       },
-      onAllSeated: () => flow.startDancing(),
-      onCeremony: () => flow.startCeremony(),
+      onAllSeated: () => flow.hallReady(),
+      onReceptionOver: () => flow.advance(),
+      onCeremonyDone: () => flow.advance(),
     });
     // Who is in each photo on its way through camera → laptop → sheets → board (FIFO)
     const magnetLedger = new MagnetLedger();
@@ -2380,7 +2381,6 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             );
           }
         } else if (simDt > 0) {
-          // Track Timer Countdown
           state.evening.phaseIntroTimer = Math.max(0, state.evening.phaseIntroTimer - simDt);
           if (state.evening.phase !== 'dancing') {
             if (!arrivalPlayerPlaced) {
@@ -3664,7 +3664,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
 
           // End of the evening: the dance set is over -> closing penalties, then stars (guestMood.ts)
           const isStickingAnimActive = pendingBoardSticks > 0 || flyingMagnets.some((m) => m.active);
-          if (flow.danceSetOver() && !pendingOutcome && !isStickingAnimActive) {
+          if (flow.eveningOver() && !pendingOutcome && !isStickingAnimActive) {
             eveningSummary = mood.settleEvening(moodBook);
             player.partyJoy = mood.joyPercent(moodBook);
             pendingOutcome = eveningSummary.stars >= 1 ? 'victory' : 'defeat';

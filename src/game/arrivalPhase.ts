@@ -103,10 +103,12 @@ export interface ArrivalHost {
   seatGuest(g: WeddingGuestActor): void;
   /** The pose ended without a photo ('wall'), or a guest in the yard asked and was ignored ('yard'). */
   onMissed(g: WeddingGuestActor, where: 'wall' | 'yard'): void;
-  /** Everyone is seated (or the phase ran too long): start the dancing. */
+  /** Everyone called in is seated in the hall (or the walk-in ran too long). */
   onAllSeated(): void;
-  /** The reception is over: the chuppah ceremony begins. */
-  onCeremony?(): void;
+  /** The reception is over (everyone posed and mingled a while): the evening's next phase decides. */
+  onReceptionOver(): void;
+  /** The chuppah is over (the couple heads back to the suite): the evening's next phase decides. */
+  onCeremonyDone(): void;
 }
 
 export interface ArrivalController {
@@ -126,8 +128,12 @@ export interface ArrivalController {
   stepCouple(couple: WeddingGuestActor[], dt: number): void;
   readonly ceremonyStage: CeremonyStage;
   readonly ceremonyLabelHe: string;
-  /** Debug (?phase=ceremony): everyone is in the yard, the chuppah is called right away. */
-  skipToCeremony(): void;
+  /** The guests in the yard go to the chuppah. */
+  startCeremony(): void;
+  /** Everyone outside heads for the hall and takes their seat. */
+  callIn(): void;
+  /** Debug (?phase=ceremony): everyone is in the yard and the reception ends right away. */
+  skipReception(): void;
 }
 
 export function createArrival(host: ArrivalHost): ArrivalController {
@@ -140,8 +146,9 @@ export function createArrival(host: ArrivalHost): ArrivalController {
   let sinceAllPosed = 0;
   let calledIn = false;
   let receptionOver = false;
+  let ceremonyHeld = false;
   let sinceCalledIn = 0;
-  const ceremony = createCeremony(() => callIn());
+  const ceremony = createCeremony(() => host.onCeremonyDone());
 
   function start() {
     const hall = host.takeHallGuests();
@@ -187,6 +194,7 @@ export function createArrival(host: ArrivalHost): ArrivalController {
     sinceAllPosed = 0;
     calledIn = false;
     receptionOver = false;
+    ceremonyHeld = false;
     sinceCalledIn = 0;
     groupMembers.forEach((members, gi) => {
       members.forEach((id, idx) => {
@@ -294,9 +302,16 @@ export function createArrival(host: ArrivalHost): ArrivalController {
     }
   }
 
-  /** The reception is over: everyone in the yard goes to the chuppah. */
+  /** The reception is over: the host's program decides what comes next (chuppah, or into the hall). */
+  function endReception() {
+    receptionOver = true;
+    host.onReceptionOver();
+  }
+
+  /** Everyone in the yard goes to the chuppah. */
   function startCeremony() {
     receptionOver = true;
+    ceremonyHeld = true;
     const yardGuests = arrivingGuests.filter((g) => g.arrival?.state === 'mingling');
     for (const g of yardGuests) {
       const y = yard.get(g.id);
@@ -306,10 +321,9 @@ export function createArrival(host: ArrivalHost): ArrivalController {
       g.wantsPhotoTimer = 1.4;
     }
     ceremony.start(yardGuests, (id) => yard.get(id)?.side ?? null);
-    host.onCeremony?.();
   }
 
-  /** After the ceremony: everyone heads for the hall door. */
+  /** Everyone outside heads for the hall door. */
   function callIn() {
     calledIn = true;
     for (const g of arrivingGuests) {
@@ -409,7 +423,7 @@ export function createArrival(host: ArrivalHost): ArrivalController {
           host.onMissed(g, 'wall');
         }
         // after the photo wall: mingle in the garden (or join the chuppah / go straight in)
-        a.state = calledIn ? 'leaving' : receptionOver ? 'ceremony' : 'mingling';
+        a.state = calledIn ? 'leaving' : ceremonyHeld ? 'ceremony' : 'mingling';
         if (a.state === 'ceremony') ceremony.adopt(g);
       }
       return;
@@ -457,15 +471,16 @@ export function createArrival(host: ArrivalHost): ArrivalController {
     // everyone has posed → mingle a while, then the chuppah is called (after it they go in)
     const stillComing = arrivingGuests.some((g) => g.arrival && g.arrival.state !== 'mingling' && g.arrival.state !== 'leaving');
     if (!stillComing) sinceAllPosed += dt;
-    if (!receptionOver && (sinceAllPosed >= MINGLE.afterLastPoseSec || phaseTime > ARRIVAL.maxPhaseSec)) startCeremony();
+    if (!receptionOver && (sinceAllPosed >= MINGLE.afterLastPoseSec || phaseTime > ARRIVAL.maxPhaseSec)) endReception();
     if (calledIn) sinceCalledIn += dt;
-    // dancing starts once everyone is seated and the couple is back in the suite (or after a safety wait)
-    if ((arrivingGuests.length === 0 && stats.total > 0 && ceremony.coupleHome) || sinceCalledIn > 60) {
+    // the hall phase starts once everyone is seated and the couple is back in the suite (or after a safety wait)
+    const coupleReady = !ceremonyHeld || ceremony.coupleHome;
+    if ((arrivingGuests.length === 0 && stats.total > 0 && coupleReady) || sinceCalledIn > 60) {
       host.onAllSeated();
     }
   }
 
-  function skipToCeremony() {
+  function skipReception() {
     for (const g of arrivingGuests) {
       const a = g.arrival;
       if (!a || a.state === 'leaving') continue;
@@ -476,7 +491,7 @@ export function createArrival(host: ArrivalHost): ArrivalController {
       }
       a.state = 'mingling';
     }
-    startCeremony();
+    endReception();
   }
 
   return {
@@ -490,7 +505,9 @@ export function createArrival(host: ArrivalHost): ArrivalController {
     get ceremonyLabelHe() {
       return ceremony.labelHe;
     },
-    skipToCeremony,
+    startCeremony,
+    callIn,
+    skipReception,
     get guests() {
       return arrivingGuests;
     },

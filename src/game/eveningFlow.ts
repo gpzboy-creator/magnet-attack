@@ -1,18 +1,25 @@
 /**
- * Starting and running the phases of the evening (moved out of IsoArenaCanvas.tsx).
+ * The phase engine: starts each phase of the evening in the order of the wedding program.
  *
  * The phases themselves live in their own modules (arrivalPhase.ts, ceremonyPhase.ts, the dance floor
- * still in the component); this file starts each one and keeps the evening topic of the state board
- * (gameState.ts) in step: which phase, its title card, its clock, the dance set's time left.
+ * still in the component). When one ends it reports here, and `advance` starts the program's next
+ * phase (weddingProgram.ts) — no phase knows which one follows it. This file also keeps the evening
+ * topic of the state board (gameState.ts) in step: which phase, its title card, its clock, the dance
+ * set's time left.
  */
 
 import type { EveningState } from './gameState.ts';
 import { PHASE_INTRO_SEC } from './eventPhases.ts';
 import { createVipEvent } from './rules.ts';
 import type { ArrivalController } from './arrivalPhase.ts';
+import { phaseAfter } from './weddingProgram.ts';
+import type { EventPhaseId } from './eventPhases.ts';
 
 export interface EveningFlowHost {
-  readonly arrival: Pick<ArrivalController, 'start' | 'finishAll' | 'update' | 'skipToCeremony' | 'stats'>;
+  readonly arrival: Pick<
+    ArrivalController,
+    'start' | 'finishAll' | 'update' | 'startCeremony' | 'callIn' | 'skipReception' | 'stats'
+  >;
   /** The bride & groom walk from the bridal suite into the hall. */
   coupleToHall(): void;
   /** Length of the dance set in seconds (?evening= overrides it for testing). */
@@ -24,14 +31,16 @@ export interface EveningFlowHost {
 
 export interface EveningFlow {
   startArrival(): void;
-  startCeremony(): void;
-  startDancing(): void;
+  /** The current phase is over: start the program's next one. */
+  advance(): void;
+  /** Everyone called in from outside is seated: the hall phase that was waiting starts. */
+  hallReady(): void;
   /** One simulated frame: the arrival runs, or the dance set counts down. */
   update(dt: number): void;
   /** Debug (?phase=dancing | ceremony): jump straight to that phase. */
   debugJump(phase: string | null): void;
-  /** The dance set has run out (the evening can be settled). */
-  danceSetOver(): boolean;
+  /** The last phase is over: the evening can be settled (stars). */
+  eveningOver(): boolean;
 }
 
 export function createEveningFlow(evening: EveningState, host: EveningFlowHost): EveningFlow {
@@ -44,13 +53,18 @@ export function createEveningFlow(evening: EveningState, host: EveningFlowHost):
     host.arrival.start();
   }
 
+  /** A hall phase waiting for the guests outside to walk in and sit down. */
+  let waitingForHall: EventPhaseId | null = null;
+
   function startCeremony() {
+    host.arrival.startCeremony();
     evening.phase = 'ceremony';
     evening.phaseIntroTimer = PHASE_INTRO_SEC;
     host.fanfare();
   }
 
   function startDancing() {
+    waitingForHall = null;
     host.arrival.finishAll();
     host.coupleToHall();
     evening.phase = 'dancing';
@@ -64,6 +78,25 @@ export function createEveningFlow(evening: EveningState, host: EveningFlowHost):
     host.announce(`🚪 קבלת הפנים הסתיימה: צילמת ${s.photographed}/${s.total} אורחים (${s.gold} בזהב ✨)`, 4);
   }
 
+  function enter(phase: EventPhaseId) {
+    if (phase === 'arrival') startArrival();
+    else if (phase === 'ceremony') startCeremony();
+    else {
+      // a hall phase: the guests outside walk in first (the current phase stays on screen meanwhile)
+      waitingForHall = phase;
+      host.arrival.callIn();
+    }
+  }
+
+  function advance() {
+    const next = phaseAfter(evening.phase);
+    if (next) enter(next);
+  }
+
+  function hallReady() {
+    if (waitingForHall === 'dancing') startDancing();
+  }
+
   function update(dt: number) {
     if (evening.phase !== 'dancing') {
       evening.phaseTime += dt;
@@ -75,15 +108,15 @@ export function createEveningFlow(evening: EveningState, host: EveningFlowHost):
 
   function debugJump(phase: string | null) {
     if (phase === 'dancing') startDancing();
-    else if (phase === 'ceremony') host.arrival.skipToCeremony();
+    else if (phase === 'ceremony') host.arrival.skipReception();
   }
 
   return {
     startArrival,
-    startCeremony,
-    startDancing,
+    advance,
+    hallReady,
     update,
     debugJump,
-    danceSetOver: () => evening.phase === 'dancing' && evening.danceTimeLeft <= 0,
+    eveningOver: () => evening.phase === 'dancing' && evening.danceTimeLeft <= 0 && phaseAfter('dancing') === null,
   };
 }

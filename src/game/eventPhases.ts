@@ -1,12 +1,11 @@
 /**
- * The wedding evening as a sequence of phases, like a real event (pure logic, tested).
+ * The phases of the wedding evening, like a real event (pure logic, tested).
+ * Their order is set by the wedding program (weddingProgram.ts); eveningFlow.ts starts each one.
  *
  *   arrival  — guests arrive through the courtyard into the lobby, stop at the photo wall to pose,
  *              then walk into the hall and sit down. Shoot every guest while they pose.
  *   ceremony — the chuppah (ceremonyPhase.ts): the groom, then the bride, walk in with their parents.
  *   dancing  — the dance floor game (photograph, print, cut, stick magnets on the board).
- *
- * Planned next (project log): family & couple photo session (keepsake magnets).
  */
 
 export type EventPhaseId = 'arrival' | 'ceremony' | 'dancing';
@@ -37,11 +36,6 @@ export const EVENT_PHASES: EventPhaseInfo[] = [
 
 export function getPhaseInfo(id: EventPhaseId): EventPhaseInfo {
   return EVENT_PHASES.find((p) => p.id === id) ?? EVENT_PHASES[0];
-}
-
-export function nextPhase(id: EventPhaseId): EventPhaseId | null {
-  const i = EVENT_PHASES.findIndex((p) => p.id === id);
-  return i >= 0 && i < EVENT_PHASES.length - 1 ? EVENT_PHASES[i + 1].id : null;
 }
 
 /** Phase title card on screen. */
