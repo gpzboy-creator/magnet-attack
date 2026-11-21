@@ -5,7 +5,7 @@
 
 ## מה זה
 
-משחק דפדפן איזומטרי בפיקסל-ארט: צלם מגנטים בחתונה. מצלמים אורחים, מדפיסים מגנטים בעמדה, מתמודדים עם תקלות אספקה, ועוברים בין שלבי האירוע (קבלת פנים → טקס → ריקודים).
+משחק דפדפן איזומטרי בפיקסל-ארט: צלם מגנטים בחתונה. מצלמים אורחים, מדפיסים מגנטים בעמדה, מתמודדים עם תקלות אספקה, ועוברים בין שלבי האירוע (קבלת פנים → טקס → סלואו → ריקודים → הפסקת אוכל → ריקודים 2).
 
 - **אתר חי:** https://gpzboy-creator.github.io/magnet-attack/ (רענון מלא: Ctrl+Shift+R)
 - **יומן הפרויקט** (מה בוצע, איפה עצרנו, החלטות): https://claude.ai/artifact/JGwArFX7UkTCHqUJDXB82F
@@ -32,7 +32,7 @@ React + TypeScript + Vite, ציור ישיר על **Canvas2D** — אין מנו
 | `public/assets/aistudio/`, `public/assets/characters/` | ספרייטים (PixelLab ואחרים) | **שם קובץ חדש בכל שינוי תוכן** (קאש של GitHub Pages) |
 | `tools/*.py` | עיבוד ספרייטים (חיתוך, מראה, גיליונות) | כל נכס שעבר עיבוד — עם הסקריפט שלו |
 
-מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts`, `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה), `venueRooms.ts` (חדר חתן וכלה + שירותים מדרום ללובי), `coupleSuite.ts` (הזוג בחדר הכלה ויציאה לאולם), `workstationFlow.ts` + `printQueue.ts` (עמדת המגנטים: העברה קצרה, הדפסה ארוכה שרצה ברקע, חיתוך של דפים מוכנים), `hallBar.ts` (בר האולם: טביעת רגל, מקומות אורחים וברמנים; ציור בפרוסות לפי y ב-`render/hallBar.ts`), `ceremonyPhase.ts` (טקס החופה: הסתדרות בשביל, כניסת החתן ואז הכלה עם ההורים, סגירת השביל, כיסאות ומשולש).
+מודולים חשובים: `venueOutside.ts` (לובי, חצר, רחבה, חניות, חצר שירות — גאומטריה + ציור), `chuppahIsland.ts` (חופה בבריכה, `groundZ`), `venueProps.ts` (ספרייטים לפי טביעת רגל, `DJ_SET`), `eventPhases.ts` + `weddingProgram.ts` + `eveningFlow.ts` (שלבי הערב, הסדר שלהם ומנוע המעברים), `crowdControl.ts` (מי יושב ומי רוקד), `coupleHall.ts` (החתן והכלה באולם), `supplies.ts`, `djNapkins.ts`, `photoScoring.ts`, `guestBehavior.ts`, `guestMood.ts` (לבבות, הבטחה, כוכבים), `arrivalPhase.ts` + `yardMingle.ts` (קבלת פנים וחצר), `cameraCard.ts` (תקרה רכה), `venueRooms.ts` (חדר חתן וכלה + שירותים מדרום ללובי), `coupleSuite.ts` (הזוג בחדר הכלה ויציאה לאולם), `workstationFlow.ts` + `printQueue.ts` (עמדת המגנטים: העברה קצרה, הדפסה ארוכה שרצה ברקע, חיתוך של דפים מוכנים), `hallBar.ts` (בר האולם: טביעת רגל, מקומות אורחים וברמנים; ציור בפרוסות לפי y ב-`render/hallBar.ts`), `ceremonyPhase.ts` (טקס החופה: הסתדרות בשביל, כניסת החתן ואז הכלה עם ההורים, סגירת השביל, כיסאות ומשולש).
 
 ## פקודות
 
@@ -56,7 +56,7 @@ npm run build          # vite build → dist/
 - עם `?spawn=` נחשף `window.__player` (מיקום, `photosInCamera`, `uncutSheetsAtStation`, `printerAnimTimer`…) — אפשר לקרוא ולשנות אותו מהסקריפט (למשל לשים 20 תמונות במצלמה ולבדוק את העמדה).
 - **זמן המשחק בדפדפן אוטומטי רץ לאט מהזמן האמיתי** — מדלגים עם `?phase=` / `?evening=` ומחכים בנדיבות.
 
-**פרמטרי דיבאג** (בכתובת): `?spawn=parking|dj|x,y` (מיקום התחלה; גם חושף `window.__player`), `?phase=dancing` (דילוג לריקודים), `?phase=ceremony` (ישר לחופה), `?djthrow=1` (זריקת מפיות אחרי 4 שניות), `?evening=8` (סט הריקודים מתקצר ל-8 שניות — להגיע מהר למסך הכוכבים).
+**פרמטרי דיבאג** (בכתובת): `?spawn=parking|dj|x,y` (מיקום התחלה; גם חושף `window.__player`), `?phase=ceremony|slow_dance|dancing|dinner|dancing2` (ישר לשלב הזה), `?djthrow=1` (זריקת מפיות אחרי 4 שניות), `?evening=8` (כל שלב באולם נמשך 8 שניות — להגיע מהר למסך הכוכבים).
 
 ## שיטת העבודה — משימה אחת לכל שיחה
 

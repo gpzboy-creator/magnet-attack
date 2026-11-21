@@ -1,19 +1,18 @@
 /**
  * The phase engine: starts each phase of the evening in the order of the wedding program.
  *
- * The phases themselves live in their own modules (arrivalPhase.ts, ceremonyPhase.ts, the dance floor
- * still in the component). When one ends it reports here, and `advance` starts the program's next
- * phase (weddingProgram.ts) — no phase knows which one follows it. This file also keeps the evening
- * topic of the state board (gameState.ts) in step: which phase, its title card, its clock, the dance
- * set's time left.
+ * The phases themselves live in their own modules (arrivalPhase.ts, ceremonyPhase.ts, crowdControl.ts,
+ * the dance floor still in the component). An outdoor phase reports here when it ends; a hall phase
+ * runs on a clock. Either way `advance` starts the program's next phase (weddingProgram.ts) — no
+ * phase knows which one follows it. This file also keeps the evening topic of the state board
+ * (gameState.ts) in step: which phase, its title card, its clock, the time left in a hall phase.
  */
 
 import type { EveningState } from './gameState.ts';
-import { PHASE_INTRO_SEC } from './eventPhases.ts';
-import { createVipEvent } from './rules.ts';
+import { HALL_PHASE, PHASE_INTRO_SEC, isDancePhase, isHallPhase, type EventPhaseId } from './eventPhases.ts';
+import { createFirstDanceEvent, createVipEvent } from './rules.ts';
 import type { ArrivalController } from './arrivalPhase.ts';
 import { phaseAfter } from './weddingProgram.ts';
-import type { EventPhaseId } from './eventPhases.ts';
 
 export interface EveningFlowHost {
   readonly arrival: Pick<
@@ -22,8 +21,14 @@ export interface EveningFlowHost {
   >;
   /** The bride & groom walk from the bridal suite into the hall. */
   coupleToHall(): void;
-  /** Length of the dance set in seconds (?evening= overrides it for testing). */
+  /** Length of both dance sets together (seconds); they split it half and half. */
   danceSetSec(): number;
+  /** Debug (?evening=N): every hall phase lasts N seconds. */
+  debugPhaseSec(): number | null;
+  /** Everyone goes back to their chair (`eating`: the main course). */
+  seatEveryone(eating: boolean): void;
+  /** Everyone gets up and walks onto the dance floor. */
+  everyoneUp(): void;
   fanfare(): void;
   /** A message line over the photographer for `sec` seconds. */
   announce(text: string, sec: number): void;
@@ -35,16 +40,20 @@ export interface EveningFlow {
   advance(): void;
   /** Everyone called in from outside is seated: the hall phase that was waiting starts. */
   hallReady(): void;
-  /** One simulated frame: the arrival runs, or the dance set counts down. */
+  /** One simulated frame: the arrival runs, or the hall phase's clock counts down. */
   update(dt: number): void;
-  /** Debug (?phase=dancing | ceremony): jump straight to that phase. */
+  /** Debug (?phase=ceremony | slow_dance | dancing | dinner | dancing2): jump straight to that phase. */
   debugJump(phase: string | null): void;
   /** The last phase is over: the evening can be settled (stars). */
   eveningOver(): boolean;
 }
 
 export function createEveningFlow(evening: EveningState, host: EveningFlowHost): EveningFlow {
+  /** A hall phase waiting for the guests outside to walk in and sit down. */
+  let waitingForHall: EventPhaseId | null = null;
+
   function startArrival() {
+    waitingForHall = null;
     evening.phase = 'arrival';
     evening.phaseIntroTimer = PHASE_INTRO_SEC;
     evening.phaseTime = 0;
@@ -53,9 +62,6 @@ export function createEveningFlow(evening: EveningState, host: EveningFlowHost):
     host.arrival.start();
   }
 
-  /** A hall phase waiting for the guests outside to walk in and sit down. */
-  let waitingForHall: EventPhaseId | null = null;
-
   function startCeremony() {
     host.arrival.startCeremony();
     evening.phase = 'ceremony';
@@ -63,26 +69,46 @@ export function createEveningFlow(evening: EveningState, host: EveningFlowHost):
     host.fanfare();
   }
 
-  function startDancing() {
-    waitingForHall = null;
+  function hallPhaseSec(phase: EventPhaseId): number {
+    const debug = host.debugPhaseSec();
+    if (debug) return debug;
+    if (phase === 'slow_dance') return HALL_PHASE.slowDanceSec;
+    if (phase === 'dinner') return HALL_PHASE.dinnerSec;
+    return host.danceSetSec() / 2;
+  }
+
+  /** Coming in from outside: whoever is still on the way sits down, the couple walks in, reception summary. */
+  function enterHall() {
     host.arrival.finishAll();
     host.coupleToHall();
-    evening.phase = 'dancing';
-    evening.phaseIntroTimer = PHASE_INTRO_SEC;
-    evening.phaseTime = 0;
-    evening.danceTimeLeft = host.danceSetSec();
-    evening.vipEvent = createVipEvent(evening.vipEventSeq++);
-    evening.nextVipCooldown = 5.0;
-    host.fanfare();
     const s = host.arrival.stats;
     host.announce(`🚪 קבלת הפנים הסתיימה: צילמת ${s.photographed}/${s.total} אורחים (${s.gold} בזהב ✨)`, 4);
+  }
+
+  function startHallPhase(phase: EventPhaseId) {
+    waitingForHall = null;
+    evening.phase = phase;
+    evening.phaseIntroTimer = PHASE_INTRO_SEC;
+    evening.phaseTime = 0;
+    evening.phaseTimeLeft = hallPhaseSec(phase);
+    if (isDancePhase(phase)) {
+      host.everyoneUp();
+      evening.vipEvent = createVipEvent(evening.vipEventSeq++);
+      evening.nextVipCooldown = 5.0;
+    } else {
+      host.seatEveryone(phase === 'dinner');
+      evening.vipEvent = phase === 'slow_dance' ? createFirstDanceEvent(evening.vipEventSeq++, evening.phaseTimeLeft) : null;
+      evening.nextVipCooldown = 9999;
+    }
+    host.fanfare();
   }
 
   function enter(phase: EventPhaseId) {
     if (phase === 'arrival') startArrival();
     else if (phase === 'ceremony') startCeremony();
+    else if (isHallPhase(evening.phase)) startHallPhase(phase);
     else {
-      // a hall phase: the guests outside walk in first (the current phase stays on screen meanwhile)
+      // from outside to the hall: the guests walk in first (the current phase stays on screen meanwhile)
       waitingForHall = phase;
       host.arrival.callIn();
     }
@@ -94,21 +120,27 @@ export function createEveningFlow(evening: EveningState, host: EveningFlowHost):
   }
 
   function hallReady() {
-    if (waitingForHall === 'dancing') startDancing();
+    if (!waitingForHall) return;
+    enterHall();
+    startHallPhase(waitingForHall);
   }
 
   function update(dt: number) {
-    if (evening.phase !== 'dancing') {
-      evening.phaseTime += dt;
+    evening.phaseTime += dt;
+    if (!isHallPhase(evening.phase)) {
       host.arrival.update(dt, evening.phaseTime);
-    } else {
-      evening.danceTimeLeft = Math.max(0, evening.danceTimeLeft - dt);
+      return;
     }
+    evening.phaseTimeLeft = Math.max(0, evening.phaseTimeLeft - dt);
+    if (evening.phaseTimeLeft <= 0 && phaseAfter(evening.phase)) advance();
   }
 
   function debugJump(phase: string | null) {
-    if (phase === 'dancing') startDancing();
-    else if (phase === 'ceremony') host.arrival.skipReception();
+    if (phase === 'ceremony') host.arrival.skipReception();
+    else if (phase && isHallPhase(phase as EventPhaseId)) {
+      enterHall();
+      startHallPhase(phase as EventPhaseId);
+    }
   }
 
   return {
@@ -117,6 +149,6 @@ export function createEveningFlow(evening: EveningState, host: EveningFlowHost):
     hallReady,
     update,
     debugJump,
-    eveningOver: () => evening.phase === 'dancing' && evening.danceTimeLeft <= 0 && phaseAfter('dancing') === null,
+    eveningOver: () => isHallPhase(evening.phase) && evening.phaseTimeLeft <= 0 && phaseAfter(evening.phase) === null,
   };
 }

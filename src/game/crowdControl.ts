@@ -3,6 +3,9 @@
  *
  * A smoothed crowd vibe (`crowdJoy`) follows the party joy; when it is high, seated guests get up
  * and dancers recruit the ones still sitting, and when it drops, bored dancers go back to their seats.
+ *
+ * Seated hall phases (slow dance, dinner) hold the crowd: `seatEveryone` sends everyone to their
+ * chairs, `stepCrowd(..., hold = true)` makes no moves, and `everyoneUp` opens the next dance set.
  */
 
 import type { WeddingGuestActor } from './guestActor.ts';
@@ -20,8 +23,14 @@ export function stepCrowd(
   guests: WeddingGuestActor[],
   partyJoy: number,
   dt: number,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  hold = false
 ) {
+  if (hold) {
+    crowd.crowdJoy = stepCrowdJoy(crowd.crowdJoy, partyJoy, dt);
+    for (const g of guests) if ((g.activityCooldown ?? 0) > 0) g.activityCooldown = Math.max(0, (g.activityCooldown ?? 0) - dt);
+    return;
+  }
     // ====================================================================
     // DYNAMIC 80% DANCING / 10% SEATED / 10% RECRUITING RATIO CONTROLLER
     // - At high Party Joy: 80% dance in place in social groups, 10% sit, 10% pull seated guests
@@ -122,4 +131,48 @@ export function stepCrowd(
         candidate.wantsPhotoTimer = 1.3;
       }
     }
+}
+
+/** A seated phase starts: everyone walks back to their chair (`eating`: the main course is served). */
+export function seatEveryone(guests: WeddingGuestActor[], eating: boolean) {
+  guests.forEach((g, i) => {
+    if (g.seekingMagnet || g.guestActivity === 'bar') return;
+    const wasUp = g.guestActivity !== 'seated';
+    g.guestActivity = 'seated';
+    g.isSeated = true;
+    g.role = 'table_guest';
+    g.isEnteringFloor = false;
+    g.recruitTargetId = null;
+    g.danceMove = eating || g.id % 2 === 0 ? 'eating' : 'toasting';
+    g.homeX = g.seatX ?? g.homeX;
+    g.homeY = g.seatY ?? g.homeY;
+    g.activityCooldown = GUEST_ACTIVITY_COOLDOWN_SEC;
+    if (wasUp && i % 3 === 0) {
+      g.speechBubbleText = eating ? '🍽️ המנה העיקרית!' : '💞 ששש... סלואו';
+      g.wantsPhotoTimer = 2;
+    }
+  });
+}
+
+/** A dance set starts after a seated phase: everyone gets up and walks onto the floor, a few at a time. */
+export function everyoneUp(guests: WeddingGuestActor[], rng: () => number = Math.random) {
+  let delay = 0;
+  guests.forEach((g, i) => {
+    if (g.seekingMagnet || g.guestActivity === 'bar' || g.guestActivity === 'dancing') return;
+    g.guestActivity = 'dancing';
+    g.isSeated = false;
+    g.role = 'dancer';
+    g.danceMove = 'bounce';
+    g.recruitTargetId = null;
+    g.homeX = g.danceSpotX ?? 0;
+    g.homeY = g.danceSpotY ?? 0;
+    g.isEnteringFloor = true;
+    g.arrivalDelayTimer = delay;
+    g.activityCooldown = GUEST_ACTIVITY_COOLDOWN_SEC;
+    delay += 0.3 + rng() * 0.5;
+    if (i % 3 === 0) {
+      g.speechBubbleText = '💃 יאללה לרחבה!';
+      g.wantsPhotoTimer = 2;
+    }
+  });
 }

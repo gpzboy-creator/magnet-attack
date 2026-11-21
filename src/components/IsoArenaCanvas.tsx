@@ -89,7 +89,7 @@ import {
   getCastFrame,
   loadCastSheet,
 } from '../game/castSprites';
-import { DIALOGUE_HE, PATIENCE, ATTENTION, PENALTIES, SCORE_REWARDS } from '../game/guestBalance';
+import { PATIENCE, ATTENTION, PENALTIES, SCORE_REWARDS } from '../game/guestBalance';
 import {
   BehaviorEvent,
   assignGuestTypes,
@@ -112,18 +112,19 @@ import { pushHallTables } from '../render/hallTables';
 import { pushReceptionBar } from '../render/receptionBar';
 import { LOUNGE_OBSTACLES, pushHallLounge } from '../render/hallLounge';
 import { hallBartenderSpots, pushHallBar } from '../render/hallBar';
-import { BAR_GUEST_SPOTS, HALL_BAR_BOX } from '../game/hallBar';
+import { HALL_BAR_BOX } from '../game/hallBar';
 import { updateGuestAtBar } from '../game/hallBarVisits';
 import { createGameState } from '../game/gameState';
 import { createEveningFlow } from '../game/eveningFlow';
-import { stepCrowd } from '../game/crowdControl';
+import { everyoneUp, seatEveryone, stepCrowd } from '../game/crowdControl';
+import { COUPLE_ROAM_SPOTS, createCoupleHall, isCoupleAtChuppah } from '../game/coupleHall';
 import { runSystems } from '../game/systems';
 import { createDrinkWaiters, trayBump, trayBumpMessage } from '../game/drinkWaiters';
 import { pushDrinkWaiters } from '../render/drinkWaiters';
 import { constrainToWalkable, insideHallFloor, settlePosition } from '../game/playerMovement';
 import { HALL_LAYOUT, HALL_TABLES, ROUND_TABLE_SEATS } from '../game/hallLayout';
 import { drawGuestHearts } from '../render/guestHearts';
-import { rateArrivalShot } from '../game/eventPhases';
+import { isDancePhase, isHallPhase, rateArrivalShot } from '../game/eventPhases';
 import {
   PHOTO_SPOT,
   HALL_EXIT,
@@ -981,7 +982,10 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     const flow = createEveningFlow(state.evening, {
       arrival,
       coupleToHall: () => startEntrance(coupleEntrance, vipCouple),
-      danceSetSec: () => Number(new URLSearchParams(window.location.search).get('evening')) || mood.MOOD.danceSetSec,
+      danceSetSec: () => mood.MOOD.danceSetSec,
+      debugPhaseSec: () => Number(new URLSearchParams(window.location.search).get('evening')) || null,
+      seatEveryone: (eating) => seatEveryone(guests, eating),
+      everyoneUp: () => everyoneUp(guests),
       fanfare: () => sound.playFanfare(true),
       announce: (text, sec) => { player.stationFeedbackText = text; player.stationFeedbackTimer = sec; },
     });
@@ -1311,7 +1315,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       player.cameraOnDesk = false;
       player.transferAnimTimer = 0;
       player.transferBatch = 0;
-      state.evening.danceTimeLeft = mood.MOOD.danceSetSec;
+      state.evening.phaseTimeLeft = mood.MOOD.danceSetSec;
 
       // Spawn first VIP Moment right away so the hall feels alive!
       state.evening.vipEvent = createVipEvent(state.evening.vipEventSeq++);
@@ -1514,125 +1518,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
     // ======================================================================
     // THE BRIDE & GROOM — unique VIP actors (cast sheet sprites)
     // ======================================================================
-    const COUPLE_CHUPPAH_SPOTS = [
-      CHUPPAH_SPOTS.bride,
-      CHUPPAH_SPOTS.groom,
-    ];
-    const COUPLE_ROAM_SPOTS = [
-      { x: 0, y: 2 }, // middle of the dance floor
-      { x: -40, y: -30 },
-      { x: 40, y: 34 },
-      { x: 30, y: -40 },
-    ];
-    let coupleRoamIdx = 0;
-    /** True while the bride and groom are mingling separately. */
-    let coupleSplit = false;
-    /** Chance that the next stop is a short separate mingle (they rejoin right after). */
-    const COUPLE_SPLIT_CHANCE = 0.3;
-    const isCoupleAtChuppah = () =>
-      vipCouple.length === 2 &&
-      state.evening.vipEvent?.kind === 'chuppah_kiss' &&
-      vipCouple.every(
-        (m, i) => Math.hypot(m.x - COUPLE_CHUPPAH_SPOTS[i].x, m.y - COUPLE_CHUPPAH_SPOTS[i].y) < 8
-      );
-    function updateVipCouple(dt: number) {
-      const [bride, groom] = vipCouple;
-      if (!bride || !groom) return;
-      const chuppahMoment = Boolean(state.evening.vipEvent && state.evening.vipEvent.kind === 'chuppah_kiss' && state.evening.vipEvent.remainingSec > 0);
-      if (chuppahMoment) coupleSplit = false; // the big moments are always together
-      bride.vipTimer = (bride.vipTimer ?? 0) - dt;
-      if (!chuppahMoment && bride.vipTimer <= 0) {
-        // Next stop: alternate dance-floor spots with visits to a banquet table or the bar
-        coupleRoamIdx++;
-        let tx: number;
-        let ty: number;
-        // Mostly together; now and then they mingle separately for a short while
-        // (never twice in a row, and always together for the big moments)
-        const wasSplit = coupleSplit;
-        coupleSplit = !wasSplit && coupleRoamIdx > 1 && Math.random() < COUPLE_SPLIT_CHANCE;
-        if (coupleSplit) {
-          const tbl = BANQUET_TABLES[Math.floor(Math.random() * BANQUET_TABLES.length)];
-          const bar = BAR_GUEST_SPOTS[Math.floor(Math.random() * BAR_GUEST_SPOTS.length)];
-          tx = tbl.wx + 30;
-          ty = tbl.wy + 26;
-          groom.vipTargetX = bar.x + 14;
-          groom.vipTargetY = bar.y + 18;
-          bride.vipTargetX = tx;
-          bride.vipTargetY = ty;
-          bride.vipTimer = 9 + Math.random() * 5;
-          bride.speechBubbleText = '👰 קופצת לחברות!';
-          bride.wantsPhotoTimer = 2;
-          groom.speechBubbleText = '🤵 לחיים עם החבר׳ה!';
-          groom.wantsPhotoTimer = 2;
-          return;
-        }
-        if (coupleRoamIdx % 3 === 1) {
-          const tbl = BANQUET_TABLES[Math.floor(Math.random() * BANQUET_TABLES.length)];
-          tx = tbl.wx + 30;
-          ty = tbl.wy + 26;
-        } else if (coupleRoamIdx % 6 === 5) {
-          const spot = BAR_GUEST_SPOTS[BAR_GUEST_SPOTS.length - 1];
-          tx = spot.x + 14;
-          ty = spot.y + 18;
-        } else {
-          const spot = COUPLE_ROAM_SPOTS[coupleRoamIdx % COUPLE_ROAM_SPOTS.length];
-          tx = spot.x;
-          ty = spot.y;
-        }
-        bride.vipTargetX = tx;
-        bride.vipTargetY = ty;
-        bride.vipTimer = 11 + Math.random() * 7;
-        if (Math.random() < 0.6) {
-          const lines = DIALOGUE_HE.brideGroomLines;
-          bride.speechBubbleText = lines[Math.floor(Math.random() * lines.length)];
-          bride.wantsPhotoTimer = 2;
-        }
-      }
-      vipCouple.forEach((m, i) => {
-        m.dancePhase += dt * m.danceTempo;
-        m.hitFlashTimer = Math.max(0, m.hitFlashTimer - dt);
-        m.celebrateTimer = Math.max(0, m.celebrateTimer - dt);
-        if ((m.flashTintTimer ?? 0) > 0) m.flashTintTimer = Math.max(0, (m.flashTintTimer ?? 0) - dt);
-        if (m.speechBubbleText) {
-          m.wantsPhotoTimer -= dt;
-          if (m.wantsPhotoTimer <= 0) m.speechBubbleText = null;
-        }
-        const target = chuppahMoment
-          ? COUPLE_CHUPPAH_SPOTS[i]
-          : coupleSplit && i === 1
-          ? { x: groom.vipTargetX ?? 0, y: groom.vipTargetY ?? 0 }
-          : { x: (bride.vipTargetX ?? 0) - i * 15, y: (bride.vipTargetY ?? 0) - i * 6 };
-        const mv = moveTowardPoint(m, target, 58, dt, 3);
-        const stepLen = Math.hypot(mv.x - m.x, mv.y - m.y);
-        if (stepLen > 0.01) {
-          const isoM = worldToIso(m.x, m.y);
-          const isoT = worldToIso(target.x, target.y);
-          m.direction = angleToIsoDirection(Math.atan2(isoT.y - isoM.y, isoT.x - isoM.x));
-          m.strideDist += stepLen * 1.5;
-          m.x = mv.x;
-          m.y = mv.y;
-        } else {
-          m.strideDist += dt * 38;
-          if (chuppahMoment) {
-            m.direction = 'S';
-            m.celebrateTimer = Math.max(m.celebrateTimer, 0.3);
-            if (i === 0 && !m.speechBubbleText) {
-              m.speechBubbleText = '💍 צלם אותנו בחופה!';
-              m.wantsPhotoTimer = 3;
-            }
-          } else {
-            // Dance with each other; turn to the camera when the photographer is close
-            const other = vipCouple[1 - i];
-            const near = Math.hypot(player.x - m.x, player.y - m.y) < 90;
-            const fx = near ? player.x : other.x;
-            const fy = near ? player.y : other.y;
-            const isoM = worldToIso(m.x, m.y);
-            const isoF = worldToIso(fx, fy);
-            m.direction = angleToIsoDirection(Math.atan2(isoF.y - isoM.y, isoF.x - isoM.x));
-          }
-        }
-      });
-    }
+    const coupleHall = createCoupleHall(); // the bride & groom in the hall (coupleHall.ts)
 
     function spawnVipCouple(): WeddingGuestActor[] {
       const make = (type: 'bride' | 'groom', id: number, x: number, y: number): WeddingGuestActor => {
@@ -2311,7 +2197,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
       const dt = clampDt(rawDt);
 
       discoBeatPhase += dt * 2.8;
-      updateDj(djState, dt, state.evening.phase === 'dancing', () => DJ_DANCE_TARGETS[Math.floor(Math.random() * DJ_DANCE_TARGETS.length)]);
+      updateDj(djState, dt, isDancePhase(state.evening.phase), () => DJ_DANCE_TARGETS[Math.floor(Math.random() * DJ_DANCE_TARGETS.length)]);
       // Squash & stretch settles back to 1 on a damped spring (slight wobble = more life)
       const springX = stepScaleSpring(player.scaleX, player.scaleVelX, dt);
       const springY = stepScaleSpring(player.scaleY, player.scaleVelY, dt);
@@ -2376,7 +2262,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           }
         } else if (simDt > 0) {
           state.evening.phaseIntroTimer = Math.max(0, state.evening.phaseIntroTimer - simDt);
-          if (state.evening.phase !== 'dancing') {
+          if (!isHallPhase(state.evening.phase)) {
             if (!arrivalPlayerPlaced) {
               // Start the evening at the lobby photo wall
               player.x = PHOTO_SPOT.x - 60;
@@ -2940,7 +2826,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             }
           }
 
-          stepCrowd(state.guests, guests, player.partyJoy, simDt); // sit / dance / recruit (crowdControl.ts)
+          stepCrowd(state.guests, guests, player.partyJoy, simDt, Math.random, !isDancePhase(state.evening.phase)); // sit / dance / recruit (crowdControl.ts)
 
           runSystems(state, simDt, 'beforeGuestUpdate'); // loop systems (systems.ts): bar visits
 
@@ -3342,8 +3228,8 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
             frameLabels[li].y -= simDt * 14;
             if (frameLabels[li].life <= 0) frameLabels.splice(li, 1);
           }
-          if (state.evening.phase !== 'dancing') arrival.stepCouple(vipCouple, simDt); // in the suite, then to the chuppah (ceremonyPhase.ts)
-          else if (!stepEntrance(coupleEntrance, vipCouple, simDt)) updateVipCouple(simDt);
+          if (!isHallPhase(state.evening.phase)) arrival.stepCouple(vipCouple, simDt); // in the suite, then to the chuppah (ceremonyPhase.ts)
+          else if (!stepEntrance(coupleEntrance, vipCouple, simDt)) coupleHall.update(vipCouple, simDt, state.evening, player);
 
           // ====================================================================
           // UPDATE FLASH SHOTS & PHOTOGRAPH GUESTS (WITH VIP, FRAME PREFERENCES & TABLE REVIVAL)
@@ -3420,7 +3306,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
                 if (player.photosInCamera < maxCapNow) {
                   player.photosInCamera++;
                   magnetLedger.push(guest.id, gameClock);
-                  mood.onShot(moodBook, [guest.id], gameClock, state.evening.phase === 'dancing' ? 'dancing' : 'arrival');
+                  mood.onShot(moodBook, [guest.id], gameClock, isHallPhase(state.evening.phase) ? 'dancing' : 'arrival');
                 }
 
                 // Personality reactions (attention seeker satisfied / magnet tracker's countdown starts)
@@ -4673,7 +4559,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
         }
 
         // The bride & groom (embracing under the chuppah during the kiss moment)
-        if (castSheet?.embrace && isCoupleAtChuppah()) {
+        if (castSheet?.embrace && isCoupleAtChuppah(vipCouple, state.evening)) {
           const [bride, groom] = vipCouple;
           const mx = (bride.x + groom.x) / 2;
           const my = (bride.y + groom.y) / 2;
@@ -5198,7 +5084,7 @@ export const IsoArenaCanvas: React.FC<IsoArenaCanvasProps> = ({
           magnetsPrinted: mood.openMagnets(moodBook).open,
           targetMagnets: mood.openMagnets(moodBook).promised,
           canPromise: mood.canPromise(moodBook, gameClock),
-          trackTimeSec: Math.round(state.evening.danceTimeLeft),
+          trackTimeSec: Math.round(state.evening.phaseTimeLeft),
           stageTitleHe: waveCfg.stageTitleHe,
           photosInCamera: player.photosInCamera,
           photosOnComputer: player.photosOnComputer,

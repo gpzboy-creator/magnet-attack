@@ -647,3 +647,11 @@ test('segmentHitsBox', () => {
   assert.equal(segmentHitsBox({ x: -5, y: -5 }, { x: -1, y: 15 }, box), false);
   assert.equal(segmentHitsBox({ x: 5, y: 12 }, { x: 8, y: 20 }, box), false);
 });
+
+test('first dance: shots of the couple in the middle of the floor count, shots at the tables do not', async () => {
+  const { createFirstDanceEvent, doesShotCountForVipEvent } = await import('./rules.ts');
+  const ev = createFirstDanceEvent(0, 30);
+  assert.equal(ev.remainingSec, 30);
+  assert.equal(doesShotCountForVipEvent(ev, { x: 7, y: 3, role: 'dancer' }), true);
+  assert.equal(doesShotCountForVipEvent(ev, { x: 65, y: 240, role: 'table_guest' }), false);
+});

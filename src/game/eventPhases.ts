@@ -5,10 +5,36 @@
  *   arrival  — guests arrive through the courtyard into the lobby, stop at the photo wall to pose,
  *              then walk into the hall and sit down. Shoot every guest while they pose.
  *   ceremony — the chuppah (ceremonyPhase.ts): the groom, then the bride, walk in with their parents.
+ *   slow_dance — the couple's first dance in the middle of the floor; the guests watch from their seats.
  *   dancing  — the dance floor game (photograph, print, cut, stick magnets on the board).
+ *   dinner   — everyone back at the tables for the main course; time to print and catch up on magnets.
+ *   dancing2 — the second dance set; the stars come at its end.
  */
 
-export type EventPhaseId = 'arrival' | 'ceremony' | 'dancing';
+export type EventPhaseId = 'arrival' | 'ceremony' | 'slow_dance' | 'dancing' | 'dinner' | 'dancing2';
+
+/** Phases played inside the hall (after the guests walked in and sat down). */
+export function isHallPhase(id: EventPhaseId): boolean {
+  return id === 'slow_dance' || id === 'dancing' || id === 'dinner' || id === 'dancing2';
+}
+
+/** Dance sets: the crowd is free to dance, VIP moments and napkin throws run. */
+export function isDancePhase(id: EventPhaseId): boolean {
+  return id === 'dancing' || id === 'dancing2';
+}
+
+/** Hall phase lengths (seconds). The two dance sets share MOOD.danceSetSec (guestMood.ts) half and half. */
+export const HALL_PHASE = {
+  slowDanceSec: 30,
+  dinnerSec: 50,
+} as const;
+
+/** Where the bride (0) and groom (1) stand in a seated hall phase (null = they roam as usual). */
+export function coupleHallSpot(phase: EventPhaseId, i: number): { x: number; y: number } | null {
+  if (phase === 'slow_dance') return { x: i === 0 ? -7 : 7, y: i === 0 ? -3 : 3 }; // close, mid-floor
+  if (phase === 'dinner') return { x: i === 0 ? -12 : 12, y: 192 }; // at the front of the tables
+  return null;
+}
 
 export interface EventPhaseInfo {
   id: EventPhaseId;
@@ -28,9 +54,24 @@ export const EVENT_PHASES: EventPhaseInfo[] = [
     goalHe: 'החתן נכנס עם ההורים, אחריו הכלה עם ההורים. צלם את הכניסות ואת הטקס!',
   },
   {
+    id: 'slow_dance',
+    titleHe: '💞 סלואו',
+    goalHe: 'הריקוד הראשון של הזוג באמצע הרחבה. צלם אותם רוקדים!',
+  },
+  {
     id: 'dancing',
     titleHe: '💃 ריקודים',
     goalHe: 'כולם ברחבה! צלם, הדפס, חתוך והדבק מגנטים על הלוח',
+  },
+  {
+    id: 'dinner',
+    titleHe: '🍽️ הפסקת אוכל',
+    goalHe: 'כולם בשולחנות, המלצרים מגישים מנה עיקרית. זה הזמן להדפיס ולהשלים מגנטים',
+  },
+  {
+    id: 'dancing2',
+    titleHe: '💃 ריקודים 2',
+    goalHe: 'הסט האחרון! בסופו מגיעים הכוכבים',
   },
 ];
 

@@ -532,7 +532,7 @@ export function getWorkstationSheetProgress(
 // ============================================================================
 // 1. VIP MOMENTS (בקשות מיוחדות ורגעי שיא באירוע עם טיימר ובונוס ענק)
 // ============================================================================
-export type VipEventKind = 'table_toast' | 'chuppah_kiss' | 'hora_frenzy';
+export type VipEventKind = 'table_toast' | 'chuppah_kiss' | 'hora_frenzy' | 'first_dance';
 
 export interface VipEventState {
   id: number;
@@ -609,6 +609,24 @@ export function createVipEvent(seqIndex: number): VipEventState {
   };
 }
 
+/** The slow dance: the couple's first dance in the middle of the floor, for the whole phase. */
+export const FIRST_DANCE_RADIUS = 110;
+export function createFirstDanceEvent(seqIndex: number, sec: number): VipEventState {
+  return {
+    id: seqIndex + 1,
+    kind: 'first_dance',
+    titleHe: '💞 הריקוד הראשון! צלם 3 תמונות של הזוג רוקד!',
+    targetPos: { x: 0, y: 0 },
+    remainingSec: sec,
+    totalSec: sec,
+    photosCaptured: 0,
+    requiredPhotos: 3,
+    bonusScore: 800,
+    bonusJoy: 20,
+    preferredFrame: 'gold',
+  };
+}
+
 export function doesShotCountForVipEvent(
   event: VipEventState | null,
   shotTarget: { x: number; y: number; role: 'dancer' | 'table_guest'; tableId?: number }
@@ -623,6 +641,9 @@ export function doesShotCountForVipEvent(
   }
   if (event.kind === 'hora_frenzy') {
     return shotTarget.role === 'dancer' && Math.hypot(shotTarget.x, shotTarget.y) <= 145;
+  }
+  if (event.kind === 'first_dance') {
+    return Math.hypot(shotTarget.x - event.targetPos.x, shotTarget.y - event.targetPos.y) <= FIRST_DANCE_RADIUS;
   }
   return false;
 }

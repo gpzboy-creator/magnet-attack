@@ -7,6 +7,7 @@
  * start/stop on phase changes, and drawing the golden target ring.
  */
 
+import { isDancePhase } from './eventPhases.ts';
 import { createVipEvent } from './rules.ts';
 import { sound } from './sound.ts';
 import type { GameState } from './gameState.ts';
@@ -33,7 +34,7 @@ export const vipEventsSystem: GameSystem = {
         ev.vipEvent = null;
         ev.nextVipCooldown = 3.5;
       }
-    } else if (ev.phase === 'dancing') {
+    } else if (isDancePhase(ev.phase)) {
       ev.nextVipCooldown -= dt;
       if (ev.nextVipCooldown <= 0) {
         ev.vipEvent = createVipEvent(ev.vipEventSeq++);

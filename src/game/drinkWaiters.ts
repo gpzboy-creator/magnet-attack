@@ -57,7 +57,8 @@ export function createDrinkWaiters(waveNum: number): DrinkWaiter[] {
 }
 
 /** One frame of one waiter: bar → loading → guest → serving → bar. */
-export function updateDrinkWaiter(wActor: DrinkWaiter, waiters: DrinkWaiter[], guests: DrinkGuest[], simDt: number) {
+/** `mainCourse` (dinner): every tray that goes out is a main course plate. */
+export function updateDrinkWaiter(wActor: DrinkWaiter, waiters: DrinkWaiter[], guests: DrinkGuest[], simDt: number, mainCourse = false) {
   wActor.bumpCooldown = Math.max(0, wActor.bumpCooldown - simDt);
   if (wActor.mode === 'to_bar') {
     const pick = BAR_PICKUP_SPOTS[wActor.id % BAR_PICKUP_SPOTS.length];
@@ -83,7 +84,7 @@ export function updateDrinkWaiter(wActor: DrinkWaiter, waiters: DrinkWaiter[], g
         const tgt = candidates[Math.floor(Math.random() * candidates.length)];
         wActor.targetGuestId = tgt.id;
         wActor.carrying = true;
-        wActor.trayItem = Math.random() < 0.5 ? 'champagne' : 'steak';
+        wActor.trayItem = mainCourse || Math.random() < 0.5 ? 'steak' : 'champagne';
         wActor.mode = 'to_guest';
       } else {
         wActor.timer = 1.2;
@@ -128,7 +129,8 @@ export const drinkWaitersSystem: GameSystem = {
   slot: 'beforeShooting',
   update(state: GameState, dt: number) {
     const { waiters, actors } = state.guests;
-    for (const w of waiters) updateDrinkWaiter(w, waiters, actors, dt);
+    const mainCourse = state.evening.phase === 'dinner';
+    for (const w of waiters) updateDrinkWaiter(w, waiters, actors, dt, mainCourse);
   },
 };
 

@@ -29,7 +29,7 @@ export const WEDDING_PROGRAM: readonly ProgramPhaseId[] = [
 ];
 
 /** Phases that exist in the game today. */
-export const BUILT_PHASES: readonly EventPhaseId[] = ['arrival', 'ceremony', 'dancing'];
+export const BUILT_PHASES: readonly EventPhaseId[] = ['arrival', 'ceremony', 'slow_dance', 'dancing', 'dinner', 'dancing2'];
 
 function isBuilt(id: ProgramPhaseId): id is EventPhaseId {
   return (BUILT_PHASES as readonly string[]).includes(id);
